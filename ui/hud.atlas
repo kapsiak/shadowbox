@@ -1,0 +1,65 @@
+images {
+  image: "/ui/icons/back.png"
+}
+images {
+  image: "/ui/icons/button.png"
+}
+images {
+  image: "/ui/icons/button_shadow.png"
+}
+images {
+  image: "/ui/icons/check.png"
+}
+images {
+  image: "/ui/icons/dot.png"
+}
+images {
+  image: "/ui/icons/lift.png"
+}
+images {
+  image: "/ui/icons/lock.png"
+}
+images {
+  image: "/ui/icons/lower.png"
+}
+images {
+  image: "/ui/icons/menu.png"
+}
+images {
+  image: "/ui/icons/next.png"
+}
+images {
+  image: "/ui/icons/redo.png"
+}
+images {
+  image: "/ui/icons/roll_right.png"
+}
+images {
+  image: "/ui/icons/stow.png"
+}
+images {
+  image: "/ui/icons/tip_away.png"
+}
+images {
+  image: "/ui/icons/turn_left.png"
+}
+images {
+  image: "/ui/icons/turn_right.png"
+}
+images {
+  image: "/ui/icons/undo.png"
+}
+images {
+  image: "/ui/icons/view_front.png"
+}
+images {
+  image: "/ui/icons/view_iso.png"
+}
+images {
+  image: "/ui/icons/view_side.png"
+}
+images {
+  image: "/ui/icons/view_top.png"
+}
+margin: 2
+extrude_borders: 2

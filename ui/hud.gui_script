@@ -1,0 +1,123 @@
+-- Draws the HUD layout published in ui/hud_model. Buttons ease in and out as the layout
+-- gains or loses them; rail buttons also slide in from the right edge.
+local models = require "ui.models"
+
+local theme = require "view.theme"
+
+local FACE = theme.vec(theme.ui.face)
+local TEXT = { title = theme.vec(theme.ui.ink), body = theme.vec(theme.ui.soft_ink) }
+local FONT_SIZE = { title = 64, body = 40 }
+local ICON = theme.vec(theme.ui.icon)
+local SHADOW = theme.vec(theme.ui.shadow)
+local EASE_RATE = 14
+local PULSE = 0.86
+
+local function createButton(id)
+	local shadow = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	gui.set_texture(shadow, "hud")
+	gui.play_flipbook(shadow, "button_shadow")
+	local face = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	gui.set_texture(face, "hud")
+	gui.play_flipbook(face, "button")
+	local icon = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	gui.set_texture(icon, "hud")
+	gui.play_flipbook(icon, id)
+	gui.set_color(icon, ICON)
+	gui.set_parent(icon, face)
+	return { face = face, shadow = shadow, icon = icon, shown = 0, scale = 1, enabled = 1, last = nil }
+end
+
+function init(self)
+	self.buttons = {}
+	self.labels = {}
+end
+
+local function createLabel(spec)
+	local node = gui.new_text_node(vmath.vector3(), "")
+	gui.set_font(node, spec.style)
+	gui.set_pivot(node, gui.PIVOT_CENTER)
+	return { node = node, shown = 0, scale = spec.id == "banner" and 0.6 or 1 }
+end
+
+local function drawLabel(label, k)
+	local spec = label.last
+	label.scale = label.scale + (1 - label.scale) * k
+	local s = spec.size / FONT_SIZE[spec.style] * label.scale
+	gui.set_text(label.node, spec.text)
+	gui.set_screen_position(label.node, vmath.vector3(spec.x, spec.y, 0))
+	gui.set_scale(label.node, vmath.vector3(s, s, 1))
+	local color = vmath.vector4(TEXT[spec.style])
+	color.w = label.shown
+	gui.set_color(label.node, color)
+	gui.set_enabled(label.node, label.shown > 0.01)
+end
+
+-- Labels fade in and out with the layout; the banner pops in from a smaller scale each time.
+local function updateLabels(self, layout, k)
+	local present = {}
+	for _, spec in ipairs(layout.labels) do
+		local label = self.labels[spec.id] or createLabel(spec)
+		self.labels[spec.id] = label
+		label.last = spec
+		present[spec.id] = true
+	end
+	for id, label in pairs(self.labels) do
+		label.shown = label.shown + ((present[id] and 1 or 0) - label.shown) * k
+		if not present[id] and id == "banner" then
+			label.scale = 0.6
+		end
+		drawLabel(label, k)
+	end
+end
+
+local function approach(a, b, k)
+	return a + (b - a) * k
+end
+
+local function draw(b)
+	local spec = b.last
+	if not spec then
+		return
+	end
+	local slide = spec.group == "rail" and (1 - b.shown) * spec.size * 1.5 or 0
+	local visible = b.shown > 0.01
+	gui.set_enabled(b.face, visible)
+	gui.set_enabled(b.shadow, visible)
+	local size = spec.size * b.scale
+	gui.set_screen_position(b.face, vmath.vector3(spec.x + slide, spec.y, 0))
+	gui.set_screen_position(b.shadow, vmath.vector3(spec.x + slide, spec.y - size * 0.05, 0))
+	gui.set_size(b.face, vmath.vector3(size, size, 0))
+	gui.set_size(b.shadow, vmath.vector3(size * 1.1, size * 1.1, 0))
+	gui.set_size(b.icon, vmath.vector3(size * 0.62, size * 0.62, 0))
+	local face, icon, shadow = vmath.vector4(FACE), vmath.vector4(ICON), vmath.vector4(SHADOW)
+	face.w, shadow.w = face.w * b.shown, shadow.w * b.shown
+	icon.w = b.shown * (0.3 + 0.7 * b.enabled)
+	gui.set_color(b.face, face)
+	gui.set_color(b.shadow, shadow)
+	gui.set_color(b.icon, icon)
+end
+
+function update(self, dt)
+	local layout = models.layout("hud") or { buttons = {}, labels = {} }
+	local k = 1 - math.exp(-EASE_RATE * dt)
+	local present = {}
+	for _, spec in ipairs(layout.buttons) do
+		local b = self.buttons[spec.id] or createButton(spec.id)
+		self.buttons[spec.id] = b
+		b.last = spec
+		present[spec.id] = spec
+	end
+	for _, id in ipairs(models.takePresses("hud")) do
+		if self.buttons[id] then
+			self.buttons[id].scale = PULSE
+		end
+	end
+	updateLabels(self, layout, k)
+	for id, b in pairs(self.buttons) do
+		local spec = present[id]
+		b.shown = approach(b.shown, spec and 1 or 0, k)
+		b.enabled = approach(b.enabled, (spec and spec.enabled) and 1 or 0, k)
+		b.scale = approach(b.scale, 1, k)
+		draw(b)
+	end
+end

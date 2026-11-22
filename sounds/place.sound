@@ -1,0 +1,4 @@
+sound: "/sounds/place.wav"
+looping: 0
+group: "sfx"
+gain: 1.0

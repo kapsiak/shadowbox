@@ -1,0 +1,254 @@
+-- The outer loop. Defold callbacks only queue input; update() runs the phases in order:
+--   layout   the active screen lays out its interface for this frame
+--   gather   raw input -> on-screen controls or gestures -> intents (skipped during a fade)
+--   apply    intents -> the active screen, which may return a request for the app
+--   record   solved levels are saved
+--   fade     a pending screen change fades out, switches, and fades back in
+--   present  the active screen shows its state; views ease toward it
+--   sound    sound cues recorded this frame are played
+--
+-- A screen is a table with a `module` implementing:
+--   layout(screen, info), hit(screen, x, y) -> control id, button(screen, control_event, intents),
+--   gesture(screen, g, intents), apply(screen, intent, dt) -> request or nil,
+--   present(screen, dt, info), exit(screen)
+-- Requests: { to = "menu" | "select" | "continue" | "next" | "play", pack, index },
+--           { setting = key, value = v }, { reset_progress = true }
+local catalog_loader = require "main.catalog"
+local storage = require "main.storage"
+local menu_screen = require "main.menu_screen"
+local play_screen = require "main.play_screen"
+local select_screen = require "main.select_screen"
+local progress = require "game.progress"
+local settings = require "game.settings"
+local actions = require "input.actions"
+local router = require "input.router"
+local gestures = require "input.gestures"
+local models = require "ui.models"
+local audio = require "view.audio"
+local theme = require "view.theme"
+local frame = require "render.frame"
+
+local DRAG_THRESHOLD = 0.012
+local FADE_OUT, FADE_IN = 0.2, 0.3
+local SAVE_DELAY = 0.5
+
+local function save(self)
+	storage.save({ progress = progress.data(self.saved), settings = self.settings, last = self.last, boards = self.boards })
+end
+
+local mobile = ({ Android = true, ["iPhone OS"] = true })[sys.get_sys_info().system_name]
+
+local function screenInfo(self)
+	local w, h = window.get_size()
+	local area = window.get_safe_area()
+	return {
+		w = math.max(w, 1), h = math.max(h, 1), scale = window.get_display_scale() * self.settings.ui_scale,
+		can_fullscreen = defos ~= nil and not mobile,
+		safe = { left = area.inset_left, right = area.inset_right, top = area.inset_top, bottom = area.inset_bottom },
+		settings = self.settings,
+		title = sys.get_config_string("project.title", ""),
+		can_continue = self.last ~= nil,
+	}
+end
+
+local function switchTo(self, screen)
+	if self.changed then
+		self.changed = nil
+		save(self)
+	end
+	if self.screen then
+		self.screen.module.exit(self.screen)
+	end
+	self.screen = screen
+	self.router = router.new()
+	self.gestures = gestures.new(0)
+end
+
+local function openLevel(self, pack_index, level_index)
+	self.last = { pack = pack_index, index = level_index }
+	save(self)
+	local pack = self.catalog.packs[pack_index]
+	switchTo(self, play_screen.enter(pack, level_index, self.factories, self.boards[pack.keys[level_index]]))
+end
+
+-- The level "Continue" resumes: the last one played if unsolved, else the next open one.
+local function continueTarget(self)
+	local last = self.last
+	if last and self.catalog.packs[last.pack] and self.catalog.packs[last.pack].keys[last.index] then
+		if not progress.isSolved(self.saved, self.catalog.packs[last.pack].keys[last.index]) then
+			return last.pack, last.index
+		end
+		return progress.next(self.saved, self.catalog, last.pack, last.index)
+	end
+	return progress.next(self.saved, self.catalog, 1, 0)
+end
+
+local function changeScreen(self, request)
+	local to = request.to
+	if to == "menu" then
+		switchTo(self, menu_screen.enter(self.showcase, self.factories))
+	elseif to == "play" then
+		openLevel(self, request.pack, request.index)
+	elseif to == "next" or to == "continue" then
+		local p, l
+		if to == "next" then
+			p, l = progress.next(self.saved, self.catalog, self.last.pack, self.last.index)
+		else
+			p, l = continueTarget(self)
+		end
+		if p then
+			openLevel(self, p, l)
+		else
+			switchTo(self, select_screen.enter(self.catalog, self.saved))
+		end
+	elseif to == "select" then
+		switchTo(self, select_screen.enter(self.catalog, self.saved))
+	end
+end
+
+-- Applies the settings that act on the engine and window rather than on a screen.
+local function applyDisplay(self)
+	local prefs = self.settings
+	sys.set_vsync_swap_interval(prefs.frame_rate == 0 and 1 or 0)
+	sys.set_update_frequency(prefs.frame_rate)
+	frame.scale = settings.renderScale(prefs.quality)
+	if defos and not mobile and defos.is_fullscreen() ~= prefs.fullscreen then
+		defos.set_fullscreen(prefs.fullscreen)
+	end
+end
+
+local function handle(self, request)
+	if request.to then
+		self.fade = self.fade or { alpha = 0, request = request }
+	elseif request.setting then
+		self.settings = settings.with(self.settings, request.setting, request.value)
+		self.changed = self.time
+		applyDisplay(self)
+	elseif request.reset_progress then
+		self.saved = progress.new()
+		self.last = nil
+		self.boards = {}
+		save(self)
+	end
+end
+
+local function gather(self, info)
+	local screen = self.screen
+	local module = screen.module
+	self.gestures.threshold = DRAG_THRESHOLD * math.min(info.w, info.h)
+	local function hitAt(x, y)
+		return module.hit(screen, x, y)
+	end
+	local intents = {}
+	for _, raw in ipairs(self.raw_input) do
+		local events = {}
+		local passed = router.route(self.router, raw, hitAt, events)
+		for _, ev in ipairs(events) do
+			if ev.phase == "press" then
+				audio.cue("ui_tap")
+			end
+			module.button(screen, ev, intents)
+		end
+		for _, g in ipairs(passed and gestures.feed(self.gestures, passed) or {}) do
+			module.gesture(screen, g, intents)
+		end
+	end
+	self.raw_input = {}
+	return intents
+end
+
+-- Saves solved levels at once, and boards and settings shortly after they stop changing.
+local function record(self)
+	local screen = self.screen
+	if screen.module == play_screen then
+		local board = play_screen.board(screen)
+		if self.boards[screen.key] ~= board then
+			self.boards[screen.key] = board
+			self.changed = self.time
+		end
+		if screen.solved and not progress.isSolved(self.saved, screen.key) then
+			progress.markSolved(self.saved, screen.key)
+			self.changed = nil
+			save(self)
+		end
+	end
+	if self.changed and self.time - self.changed > SAVE_DELAY then
+		self.changed = nil
+		save(self)
+	end
+end
+
+-- Fades out, performs the pending screen change at full cover, then fades back in.
+local function stepFade(self, dt)
+	local fade = self.fade
+	if not fade then
+		return
+	end
+	if fade.request then
+		fade.alpha = math.min(1, fade.alpha + dt / FADE_OUT)
+		if fade.alpha >= 1 then
+			changeScreen(self, fade.request)
+			fade.request = nil
+		end
+	else
+		fade.alpha = math.max(0, fade.alpha - dt / FADE_IN)
+		if fade.alpha <= 0 then
+			self.fade = nil
+		end
+	end
+	models.publish("fade", self.fade and self.fade.alpha * self.fade.alpha * (3 - 2 * self.fade.alpha) or 0)
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+	self.raw_input = {}
+	self.time = 0
+	self.factories = {
+		piece = msg.url("#piece_factory"), panel = msg.url("#panel_factory"), tray_piece = msg.url("#tray_piece_factory"),
+	}
+	self.catalog = assert(catalog_loader.load())
+	self.showcase = assert(catalog_loader.loadShowcase())
+	local data = storage.load() or {}
+	self.saved = progress.new(data.progress)
+	self.settings = settings.new(data.settings)
+	self.last = data.last
+	self.boards = data.boards or {}
+	applyDisplay(self)
+	go.set("/background#mesh", "top", theme.vec(theme.background.top))
+	go.set("/background#mesh", "bottom", theme.vec(theme.background.bottom))
+	go.set("/tray_backdrop#mesh", "fill", theme.vec(theme.tray_fill))
+	switchTo(self, menu_screen.enter(self.showcase, self.factories))
+	audio.startMusic()
+	local info = screenInfo(self)
+	self.screen.module.layout(self.screen, info)
+	self.screen.module.present(self.screen, 0, info)
+end
+
+function update(self, dt)
+	self.time = self.time + dt
+	local info = screenInfo(self)
+	local screen = self.screen
+	screen.module.layout(screen, info)
+	local intents = gather(self, info)
+	if not self.fade then
+		for _, intent in ipairs(intents) do
+			local request = screen.module.apply(screen, intent, dt)
+			if request then
+				handle(self, request)
+			end
+		end
+	end
+	record(self)
+	stepFade(self, dt)
+	info = screenInfo(self)
+	self.screen.module.layout(self.screen, info)
+	self.screen.module.present(self.screen, dt, info)
+	audio.flush(self.settings)
+end
+
+function on_input(self, action_id, action)
+	local raw = actions.read(action_id, action)
+	if raw then
+		self.raw_input[#self.raw_input + 1] = raw
+	end
+end

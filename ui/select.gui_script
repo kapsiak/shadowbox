@@ -1,0 +1,130 @@
+-- Draws the level select layout published in ui/models ("select"): pack headers and level
+-- cards, each with its number, name, a small silhouette of its front target and a badge.
+local models = require "ui.models"
+
+local theme = require "view.theme"
+
+local FACE = theme.vec(theme.ui.face)
+local SHADOW = theme.vec(theme.ui.shadow)
+local INK = theme.vec(theme.ui.ink)
+local SOFT_INK = theme.vec(theme.ui.soft_ink)
+local CELL_ON = theme.vec(theme.panel.normal.ink)
+local CELL_OFF = theme.vec(theme.ui.cell_off)
+local SOLVED = theme.vec(theme.ui.solved)
+local FONT_SIZE = { title = 64, body = 40 }
+local FADE_RATE = 10
+local SLICE = vmath.vector4(30, 30, 30, 30)
+
+local function box(texture, image)
+	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	if texture then
+		gui.set_texture(node, texture)
+		gui.play_flipbook(node, image)
+	end
+	return node
+end
+
+local function text(font)
+	local node = gui.new_text_node(vmath.vector3(), "")
+	gui.set_font(node, font)
+	return node
+end
+
+local function withAlpha(color, alpha)
+	local c = vmath.vector4(color)
+	c.w = c.w * alpha
+	return c
+end
+
+local function setText(node, font, value, x, y, size, color, alpha, pivot)
+	gui.set_text(node, value)
+	gui.set_pivot(node, pivot or gui.PIVOT_CENTER)
+	gui.set_screen_position(node, vmath.vector3(x, y, 0))
+	local s = size / FONT_SIZE[font]
+	gui.set_scale(node, vmath.vector3(s, s, 1))
+	gui.set_color(node, withAlpha(color, alpha))
+end
+
+local function createCard(spec)
+	local card = { shadow = box("hud", "button_shadow"), face = box("hud", "button"), cells = {} }
+	gui.set_slice9(card.face, SLICE)
+	gui.set_slice9(card.shadow, SLICE)
+	local t = spec.target
+	for i = 1, t.w * t.h do
+		card.cells[i] = box("hud", "button")
+	end
+	card.number = text("title")
+	card.name = text("body")
+	card.badge = box("hud", "check")
+	return card
+end
+
+local function placeCard(card, spec, alpha)
+	local dim = spec.state == "locked" and 0.45 or 1
+	gui.set_screen_position(card.shadow, vmath.vector3(spec.x, spec.y - spec.h * 0.02, 0))
+	gui.set_size(card.shadow, vmath.vector3(spec.w * 1.04, spec.h * 1.04, 0))
+	gui.set_color(card.shadow, withAlpha(SHADOW, alpha))
+	gui.set_screen_position(card.face, vmath.vector3(spec.x, spec.y, 0))
+	gui.set_size(card.face, vmath.vector3(spec.w, spec.h, 0))
+	gui.set_color(card.face, withAlpha(FACE, alpha))
+
+	local t = spec.target
+	local cell = math.min(spec.w * 0.54 / t.w, spec.h * 0.4 / t.h)
+	local left = spec.x - cell * t.w / 2
+	local bottom = spec.y + spec.h * 0.42 - cell * t.h
+	local on = spec.state == "solved" and SOLVED or CELL_ON
+	for i, node in ipairs(card.cells) do
+		local u, v = (i - 1) % t.w, math.floor((i - 1) / t.w)
+		gui.set_screen_position(node, vmath.vector3(left + (u + 0.5) * cell, bottom + (v + 0.5) * cell, 0))
+		gui.set_size(node, vmath.vector3(cell * 0.86, cell * 0.86, 0))
+		gui.set_color(node, withAlpha(t.filled[i] and on or CELL_OFF, alpha * dim))
+	end
+
+	setText(card.number, "title", tostring(spec.number), spec.x, spec.y - spec.h * 0.12, spec.h * 0.2, INK, alpha * dim)
+	setText(card.name, "body", spec.name, spec.x, spec.y - spec.h * 0.31, spec.h * 0.1, SOFT_INK, alpha * dim)
+
+	local badge = spec.state == "solved" and "check" or spec.state == "locked" and "lock" or nil
+	gui.set_enabled(card.badge, badge ~= nil)
+	if badge then
+		gui.play_flipbook(card.badge, badge)
+		local size = spec.w * 0.14
+		gui.set_screen_position(card.badge, vmath.vector3(spec.x + spec.w * 0.38, spec.y + spec.h * 0.4, 0))
+		gui.set_size(card.badge, vmath.vector3(size, size, 0))
+		gui.set_color(card.badge, withAlpha(badge == "check" and SOLVED or SOFT_INK, alpha))
+	end
+end
+
+local function header(self, id)
+	self.headers[id] = self.headers[id] or { title = text("title"), detail = text("body") }
+	return self.headers[id]
+end
+
+function init(self)
+	self.cards, self.headers, self.shown = {}, {}, 0
+	self.title = text("title")
+end
+
+function update(self, dt)
+	local layout = models.layout("select")
+	self.shown = self.shown + ((layout and 1 or 0) - self.shown) * (1 - math.exp(-FADE_RATE * dt))
+	self.last = layout or self.last
+	local last = self.last
+	if not last then
+		return
+	end
+	local alpha = self.shown
+	local title = last.title
+	setText(self.title, "title", title.text, title.x, title.y, title.size, INK, alpha)
+	for _, spec in ipairs(last.headers) do
+		local h = header(self, spec.id)
+		local a = alpha * (spec.enabled and 1 or 0.45)
+		setText(h.title, "title", spec.text, spec.x, spec.y, spec.size, INK, a, gui.PIVOT_W)
+		local metrics = resource.get_text_metrics(gui.get_font_resource("title"), spec.text)
+		local title_width = metrics.width * spec.size / FONT_SIZE.title
+		setText(h.detail, "body", spec.detail, spec.x + title_width + spec.size * 0.6, spec.y - spec.size * 0.05, spec.size * 0.7, SOFT_INK, a, gui.PIVOT_W)
+	end
+	for _, spec in ipairs(last.cards) do
+		self.cards[spec.id] = self.cards[spec.id] or createCard(spec)
+		placeCard(self.cards[spec.id], spec, alpha)
+	end
+end

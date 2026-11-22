@@ -1,0 +1,240 @@
+-- Draws the sheet layout published in ui/models ("panel"): an optional dimmed backdrop and
+-- card, a title, a heading, and buttons, toggles and sliders. Also draws the screen-wide fade
+-- ("fade", a number in [0, 1]) used for transitions, on top of everything.
+local models = require "ui.models"
+
+local theme = require "view.theme"
+
+local ui = theme.ui
+local FACE, CARD, SHADOW = theme.vec(ui.face), theme.vec(ui.card), theme.vec(ui.shadow)
+local INK, ACCENT, TRACK = theme.vec(ui.ink), theme.vec(ui.accent), theme.vec(ui.track)
+local DANGER, WHITE, DIM, FADE = theme.vec(ui.danger), theme.vec(ui.white), theme.vec(ui.dim), theme.vec(ui.fade)
+local FONT_SIZE = { title = 64, body = 40 }
+local SLICE = vmath.vector4(30, 30, 30, 30)
+local EASE_RATE = 14
+
+local function withAlpha(color, alpha)
+	local c = vmath.vector4(color)
+	c.w = c.w * alpha
+	return c
+end
+
+local function box(image, sliced)
+	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	if image then
+		gui.set_texture(node, "hud")
+		gui.play_flipbook(node, image)
+	end
+	if sliced then
+		gui.set_slice9(node, SLICE)
+	end
+	return node
+end
+
+local function text(font)
+	local node = gui.new_text_node(vmath.vector3(), "")
+	gui.set_font(node, font)
+	gui.set_pivot(node, gui.PIVOT_CENTER)
+	return node
+end
+
+local function place(node, x, y, w, h, color)
+	gui.set_screen_position(node, vmath.vector3(x, y, 0))
+	gui.set_size(node, vmath.vector3(w, h, 0))
+	gui.set_color(node, color)
+end
+
+local function writeText(node, font, value, x, y, size, color, pivot)
+	gui.set_text(node, value)
+	gui.set_pivot(node, pivot or gui.PIVOT_CENTER)
+	gui.set_screen_position(node, vmath.vector3(x, y, 0))
+	local s = size / FONT_SIZE[font]
+	gui.set_scale(node, vmath.vector3(s, s, 1))
+	gui.set_color(node, color)
+end
+
+-- A pill: a bar with round ends, drawn as a middle box between two dots.
+local function pill()
+	return { mid = box(), left = box("dot"), right = box("dot") }
+end
+
+local function placePill(p, x, y, w, h, color)
+	w = math.max(w, h)
+	place(p.mid, x, y, w - h, h, color)
+	place(p.left, x - (w - h) / 2, y, h, h, color)
+	place(p.right, x + (w - h) / 2, y, h, h, color)
+end
+
+local function enablePill(p, enabled)
+	gui.set_enabled(p.mid, enabled)
+	gui.set_enabled(p.left, enabled)
+	gui.set_enabled(p.right, enabled)
+end
+
+local MAX_SEGMENTS = 4
+
+
+local function createItem()
+	local item = {
+		shadow = box("button_shadow", true), face = box("button", true), label = text("body"),
+		track = pill(), fill = pill(), knob_shadow = box("dot"), knob = box("dot"), scale = 1,
+		segments = {},
+	}
+	for i = 1, MAX_SEGMENTS do
+		item.segments[i] = text("body")
+	end
+	return item
+end
+
+local function enableItem(item, enabled, control)
+	local segmented = control == "choice" or control == "tabs"
+	gui.set_enabled(item.shadow, enabled and control ~= "tabs")
+	gui.set_enabled(item.face, enabled and control ~= "tabs")
+	gui.set_enabled(item.label, enabled and control ~= "tabs")
+	enablePill(item.track, enabled and control ~= nil)
+	enablePill(item.fill, enabled and (control == "slider" or segmented))
+	gui.set_enabled(item.knob, enabled and (control == "slider" or control == "toggle"))
+	gui.set_enabled(item.knob_shadow, enabled and (control == "slider" or control == "toggle"))
+	for i, node in ipairs(item.segments) do
+		gui.set_enabled(node, enabled and segmented and (item.segment_count or 0) >= i)
+	end
+end
+
+local function hideItem(item)
+	enableItem(item, false)
+end
+
+local function drawKnob(item, x, y, size, a)
+	place(item.knob_shadow, x, y - size * 0.06, size * 1.12, size * 1.12, withAlpha(SHADOW, a * 1.6))
+	place(item.knob, x, y, size, size, withAlpha(WHITE, a))
+end
+
+-- Segmented control: a track with the selected segment raised as a white pill.
+local function drawSegments(item, spec, a)
+	local n = #spec.segments
+	local seg_w = spec.track_w / n
+	local th = spec.h * (spec.kind == "tabs" and 0.8 or 0.62)
+	local selected = 1
+	for i, v in ipairs(spec.values) do
+		if v == spec.value then
+			selected = i
+		end
+	end
+	item.selected = (item.selected or selected) + (selected - (item.selected or selected)) * 0.35
+	local cx = spec.track_x + spec.track_w / 2
+	placePill(item.track, cx, spec.y, spec.track_w, th, withAlpha(TRACK, a))
+	local sx = spec.track_x + seg_w * (item.selected - 0.5)
+	placePill(item.fill, sx, spec.y, seg_w - th * 0.12, th * 0.86, withAlpha(WHITE, a))
+	for i, node in ipairs(item.segments) do
+		if i <= n then
+			local color = i == selected and INK or withAlpha(INK, 0.6)
+			writeText(node, "body", spec.segments[i], spec.track_x + seg_w * (i - 0.5), spec.y, th * 0.42, withAlpha(color, a))
+		end
+	end
+end
+
+local function drawControl(item, spec, a)
+	local h = spec.h
+	if spec.kind == "choice" or spec.kind == "tabs" then
+		drawSegments(item, spec, a)
+	elseif spec.kind == "toggle" then
+		local tw, th = h * 0.95, h * 0.52
+		local tx = spec.x + spec.w / 2 - h * 0.3 - tw / 2
+		item.on = (item.on or 0) + ((spec.value and 1 or 0) - (item.on or 0)) * 0.35
+		placePill(item.track, tx, spec.y, tw, th, withAlpha(TRACK + (ACCENT - TRACK) * item.on, a))
+		drawKnob(item, tx - tw / 2 + th / 2 + item.on * (tw - th), spec.y, th * 0.78, a)
+	elseif spec.kind == "slider" then
+		local t = (spec.value - spec.min) / (spec.max - spec.min)
+		local th = h * 0.14
+		local left = spec.track_x
+		placePill(item.track, left + spec.track_w / 2, spec.y, spec.track_w, th, withAlpha(TRACK, a))
+		placePill(item.fill, left + spec.track_w * t / 2, spec.y, spec.track_w * t, th, withAlpha(ACCENT, a))
+		drawKnob(item, left + spec.track_w * t, spec.y, h * 0.4, a)
+	end
+end
+
+local controls = { slider = true, toggle = true, choice = true, tabs = true }
+
+local function drawItem(item, spec, a)
+	local control = controls[spec.kind] and spec.kind or nil
+	item.segment_count = spec.segments and #spec.segments or 0
+	enableItem(item, true, control)
+	item.scale = item.scale + (1 - item.scale) * 0.25
+	local w, h = spec.w * item.scale, spec.h * item.scale
+	local face = spec.primary and ACCENT or FACE
+	place(item.shadow, spec.x, spec.y - h * 0.05, w * 1.02, h * 1.1, withAlpha(SHADOW, a))
+	place(item.face, spec.x, spec.y, w, h, withAlpha(face, a))
+	drawControl(item, spec, a)
+	local color = spec.primary and WHITE or spec.danger and DANGER or INK
+	if control == "tabs" then
+		return
+	elseif control then
+		writeText(item.label, "body", spec.label, spec.x - spec.w / 2 + h * 0.4, spec.y, h * 0.36, withAlpha(color, a), gui.PIVOT_W)
+	else
+		writeText(item.label, "body", spec.label, spec.x, spec.y, h * 0.4, withAlpha(color, a))
+	end
+end
+
+function init(self)
+	gui.set_render_order(8)
+	self.dim = box()
+	self.card_shadow = box("button_shadow", true)
+	self.card = box("button", true)
+	self.title = text("title")
+	self.heading = text("title")
+	self.items = {}
+	self.shown = 0
+	self.fade = box()
+end
+
+local function drawFrame(self, layout, a, w, h)
+	place(self.dim, w / 2, h / 2, w, h, withAlpha(DIM, a * (layout.modal and 1 or 0)))
+	local card = layout.card
+	gui.set_enabled(self.card, card ~= nil)
+	gui.set_enabled(self.card_shadow, card ~= nil)
+	if card then
+		local s = 0.96 + 0.04 * a
+		place(self.card_shadow, card.x, card.y - card.h * 0.015, card.w * 1.03 * s, card.h * 1.04 * s, withAlpha(SHADOW, a))
+		place(self.card, card.x, card.y, card.w * s, card.h * s, withAlpha(CARD, a))
+	end
+	gui.set_enabled(self.title, layout.title ~= nil)
+	if layout.title then
+		local t = layout.title
+		writeText(self.title, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a))
+	end
+	gui.set_enabled(self.heading, layout.heading ~= nil)
+	if layout.heading then
+		local t = layout.heading
+		writeText(self.heading, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a))
+	end
+end
+
+function update(self, dt)
+	local w, h = window.get_size()
+	local layout = models.layout("panel")
+	local k = 1 - math.exp(-EASE_RATE * dt)
+	self.shown = self.shown + ((layout and 1 or 0) - self.shown) * k
+	self.last = layout or self.last
+	for _, id in ipairs(models.takePresses("panel")) do
+		if self.items[id] then
+			self.items[id].scale = 0.94
+		end
+	end
+	local present = {}
+	if self.last then
+		drawFrame(self, self.last, self.shown, w, h)
+		for _, spec in ipairs(self.last.items) do
+			self.items[spec.id] = self.items[spec.id] or createItem()
+			drawItem(self.items[spec.id], spec, self.shown)
+			present[spec.id] = true
+		end
+	end
+	for id, item in pairs(self.items) do
+		if not present[id] then
+			hideItem(item)
+		end
+	end
+	local fade = models.layout("fade") or 0
+	place(self.fade, w / 2, h / 2, w, h, withAlpha(FADE, fade))
+	gui.set_enabled(self.fade, fade > 0.001)
+end

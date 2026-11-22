@@ -1,0 +1,37 @@
+#version 140
+
+in highp vec4 position;
+in mediump vec3 normal;
+in mediump vec2 texcoord0;
+in mediump vec4 edge;
+in mediump float ao;
+
+out highp vec3 var_position;
+out mediump vec3 var_normal;
+out mediump vec2 var_uv;
+out mediump vec4 var_edge;
+out mediump float var_ao;
+out mediump vec3 var_key;
+out mediump vec3 var_up;
+
+uniform vs_uniforms
+{
+    mediump mat4 mtx_worldview;
+    mediump mat4 mtx_view;
+    mediump mat4 mtx_proj;
+    mediump mat4 mtx_normal;
+    mediump vec4 key_dir;
+};
+
+void main()
+{
+    vec4 p = mtx_worldview * vec4(position.xyz, 1.0);
+    var_position = p.xyz;
+    var_normal = normalize((mtx_normal * vec4(normal, 0.0)).xyz);
+    var_uv = texcoord0;
+    var_edge = edge;
+    var_ao = ao;
+    var_key = normalize((mtx_view * vec4(-key_dir.xyz, 0.0)).xyz);
+    var_up = normalize((mtx_view * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    gl_Position = mtx_proj * p;
+}

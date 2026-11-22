@@ -1,0 +1,6 @@
+return {
+	default = {
+		lua = "luajit",
+		ROOT = { "spec" },
+	},
+}

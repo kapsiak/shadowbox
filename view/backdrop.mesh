@@ -1,0 +1,4 @@
+material: "/materials/backdrop.material"
+vertices: "/view/background.buffer"
+primitive_type: PRIMITIVE_TRIANGLES
+position_stream: "position"
