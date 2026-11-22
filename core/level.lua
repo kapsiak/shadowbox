@@ -2,6 +2,7 @@
 -- immutable level. Everything after parsing may trust the level's shape.
 local shape = require "core.shape"
 local projection = require "core.projection"
+local channels = require "core.channels"
 local source_data = require "core.source"
 
 local M = {}
@@ -62,14 +63,66 @@ local function isConnected(cells)
 	return count == #cells
 end
 
+local allowed_keys = { color = true }
+for _, name in ipairs(channels.order) do
+	allowed_keys[channels[name].key] = true
+end
+
+local function readValue(key, spec)
+	local value = {}
+	for _, name in ipairs(channels.order) do
+		local channel = channels[name]
+		local word = spec[channel.key]
+		value[name] = channel.default
+		if word ~= nil then
+			value[name] = channel.names[word]
+			if not value[name] then
+				return nil, ("piece %s: unknown %s '%s'"):format(key, channel.key, tostring(word))
+			end
+		end
+	end
+	return value
+end
+
+-- A piece is a colour name, or a table of properties; glass pieces need no colour.
 local function readPiece(key, spec)
 	if type(spec) == "string" then
 		spec = { color = spec }
 	end
-	if type(spec) ~= "table" or type(spec.color) ~= "string" then
-		return nil, ("piece %s: expected a color name or { color = ... }"):format(key)
+	if type(spec) ~= "table" then
+		return nil, ("piece %s: expected a color name or a table of properties"):format(key)
 	end
-	return { key = key, color = spec.color }
+	for k in pairs(spec) do
+		if not allowed_keys[k] then
+			return nil, ("piece %s: unknown property '%s'"):format(key, tostring(k))
+		end
+	end
+	local value, err = readValue(key, spec)
+	if not value then
+		return nil, err
+	end
+	if spec.color ~= nil and type(spec.color) ~= "string" then
+		return nil, ("piece %s: color must be a name"):format(key)
+	end
+	if spec.color == nil and value.light == channels.light.default then
+		return nil, ("piece %s: opaque pieces need a color"):format(key)
+	end
+	return { key = key, color = spec.color, value = value }
+end
+
+-- Light always; any other channel once a piece sets it.
+local function usedChannels(pieces)
+	local names = {}
+	for _, name in ipairs(channels.order) do
+		local used = name == "light"
+		for _, piece in ipairs(pieces) do
+			used = used or piece.value[name] ~= channels[name].default
+		end
+		if used then
+			names[#names + 1] = name
+		end
+	end
+	return names
 end
 
 local function readViews(views)
@@ -108,7 +161,7 @@ function M.parse(def, name)
 	end
 	table.sort(keys)
 
-	local pieces, solution, all_cells = {}, {}, {}
+	local pieces, solution, items = {}, {}, {}
 	for id, key in ipairs(keys) do
 		local cells = cells_by_key[key]
 		if not cells then
@@ -126,14 +179,13 @@ function M.parse(def, name)
 		piece.shape, anchor = shape.new(cells)
 		pieces[id] = piece
 		solution[id] = { cell = anchor, orient = 1 }
-		for _, c in ipairs(cells) do
-			all_cells[#all_cells + 1] = c
-		end
+		items[id] = { cells = cells, value = piece.value }
 	end
 
+	local names = usedChannels(pieces)
 	local targets = {}
 	for _, v in ipairs(views) do
-		targets[v] = projection.project(size, all_cells, v)
+		targets[v] = projection.project(size, v, names, items)
 	end
 
 	local rules = def.rules or {}
@@ -143,6 +195,7 @@ function M.parse(def, name)
 		pieces = pieces,
 		solution = solution,
 		views = views,
+		channels = names,
 		targets = targets,
 		rules = { use_all = rules.use_all ~= false },
 	}

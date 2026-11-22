@@ -1,18 +1,56 @@
--- Reads and writes the player's saved data: { progress = {...}, settings = {...}, last = {...} }.
+-- Reads and writes the save file. Saves alternate between two slots, each stamped with a
+-- sequence number, and loading takes the newest slot that reads back; a write cut short or a
+-- corrupt file costs at most the latest save. The folder name is fixed here rather than taken
+-- from the game's title, so renaming the game keeps saves.
 local M = {}
 
-local function path()
-	return sys.get_save_file(sys.get_config_string("project.title") or "game", "save")
-end
+local APP_ID = "projection_game"
+local SLOTS = { "save_a", "save_b" }
+-- sys.save's limit is 512 KB; warn well before it.
+local WARN_BYTES = 256 * 1024
 
-function M.load()
-	return sys.load(path())
-end
+local seq, slot = 0, 1
 
-function M.save(data)
-	if not sys.save(path(), data) then
-		print("could not save")
+local function read(app_id, name)
+	local ok, data = pcall(function()
+		return sys.load(sys.get_save_file(app_id, name))
+	end)
+	if ok and type(data) == "table" and next(data) then
+		return data
 	end
+end
+
+-- The newest saved data, or nil when there is none.
+function M.load()
+	local newest
+	for i, name in ipairs(SLOTS) do
+		local data = read(APP_ID, name)
+		local n = data and tonumber(data.seq) or -1
+		if data and (not newest or n > seq) then
+			newest, seq, slot = data, n, i % #SLOTS + 1
+		end
+	end
+	return newest
+end
+
+-- Writes `data` (a table, stamped with a sequence number) to the next slot; true on success.
+function M.save(data)
+	data.seq = seq + 1
+	if sys.get_engine_info().is_debug then
+		local ok, bytes = pcall(sys.serialize, data)
+		if ok and #bytes > WARN_BYTES then
+			print(("save data is %d bytes, nearing the 512 KB limit"):format(#bytes))
+		end
+	end
+	local ok, err = pcall(function()
+		sys.save(sys.get_save_file(APP_ID, SLOTS[slot]), data)
+	end)
+	if not ok then
+		print("could not save: " .. tostring(err))
+		return false
+	end
+	seq, slot = data.seq, slot % #SLOTS + 1
+	return true
 end
 
 return M

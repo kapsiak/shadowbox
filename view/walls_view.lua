@@ -4,10 +4,10 @@
 local shape = require "core.shape"
 local grid = require "core.grid"
 local projection = require "core.projection"
+local channels = require "core.channels"
 local mesh_gen = require "view.mesh_gen"
 local resources = require "view.resources"
 local motion = require "view.motion"
-local audio = require "view.audio"
 local theme = require "view.theme"
 
 local M = {}
@@ -49,26 +49,34 @@ local function zeros(n)
 	return t
 end
 
+-- A w x h RGBA texture whose texels ease from `now` toward `goal`.
+local function newLayer(w, h, owned)
+	local texture = resources.createTexture(w, h, zeros(w * h * 4))
+	owned[#owned + 1] = texture
+	return { texture = texture, now = zeros(w * h * 4), goal = zeros(w * h * 4), dirty = true }
+end
+
+-- Texture slots follow the sampler order in panel.material; `cells` is bound twice (sharp, soft).
+local slots = { { "texture0", "cells" }, { "texture1", "cells" }, { "texture2", "focus" }, { "texture3", "received" }, { "texture4", "target" } }
+
 function M.create(level, factory_url)
 	local walls = { level = level, list = {}, owned = {} }
 	for name, axis in pairs(axes_of) do
 		local buffers, w, h = sideBuffers(level, name, walls.owned)
 		local id = factory.create(factory_url)
 		local mesh = msg.url(nil, id, "mesh")
-		local texture = resources.createTexture(w, h, zeros(w * h * 4))
-		local focus_texture = resources.createTexture(w, h, zeros(w * h * 4))
-		walls.owned[#walls.owned + 1] = texture
-		walls.owned[#walls.owned + 1] = focus_texture
+		local layers = {}
+		for _, layer in ipairs({ "cells", "focus", "received", "target" }) do
+			layers[layer] = newLayer(w, h, walls.owned)
+		end
 		go.set(mesh, "vertices", buffers[-1])
-		go.set(mesh, "texture0", texture)
-		go.set(mesh, "texture1", texture)
-		go.set(mesh, "texture2", focus_texture)
+		for _, slot in ipairs(slots) do
+			go.set(mesh, slot[1], layers[slot[2]].texture)
+		end
 		go.set(mesh, "dims", vmath.vector4(w, h, MARGIN, 0))
 		walls.list[name] = {
-			name = name, axis = axis, go = id, mesh = mesh, buffers = buffers, texture = texture, w = w, h = h,
+			name = name, axis = axis, go = id, mesh = mesh, buffers = buffers, w = w, h = h, layers = layers,
 			side = -1, goal_side = -1, opacity = 1, pulse = 0, matched = false, glow = 0,
-			cells = zeros(w * h * 4), goal = zeros(w * h * 4), dirty = true,
-			focus_texture = focus_texture, focus = zeros(w * h * 4), focus_goal = zeros(w * h * 4), focus_dirty = true,
 		}
 	end
 	return walls
@@ -87,9 +95,10 @@ end
 -- Marks the cells the focused piece casts onto, in the red channel of each wall's focus goal.
 local function focusGoals(walls, cells)
 	for name, wall in pairs(walls.list) do
-		local cast = cells and projection.project(walls.level.size, cells, name).filled
+		local cast = cells and projection.cover(walls.level.size, cells, name)
+		local goal = wall.layers.focus.goal
 		for i = 1, wall.w * wall.h do
-			wall.focus_goal[(i - 1) * 4 + 1] = cast and cast[i] and 1 or 0
+			goal[(i - 1) * 4 + 1] = cast and cast[i] and 1 or 0
 		end
 	end
 end
@@ -107,20 +116,40 @@ local function floorShadow(level, poses)
 			end
 		end
 	end
-	return { covered = projection.project(level.size, cells, "top").filled, contact = contact }
+	return { covered = projection.cover(level.size, cells, "top"), contact = contact }
 end
 
--- Per cell, four channels in [0, 1]: target, judged coverage, unjudged coverage, contact.
+local WHITE = channels.light.identity
+
+-- Writes the colour of `light` into texel i: rgb the glass colour and a = 1, or a = 0 for
+-- darkness (drawn in the panel's ink). White leaves the texel alone, so a cell keeps its
+-- colour while it fades out.
+local function lightGoal(goal, i, light)
+	if not light or light == WHITE then
+		return
+	end
+	local base, color = (i - 1) * 4, theme.glass[light]
+	goal[base + 4] = color and 1 or 0
+	for k = 1, color and 3 or 0 do
+		goal[base + k] = color[k]
+	end
+end
+
+-- cells, per texel: target, judged coverage, unjudged coverage, contact, in [0, 1];
+-- received and target: the colour of the light received and wanted (see lightGoal).
 -- `shadow` is given for the floor only.
 local function cellGoals(wall, target, comparison, shadow)
-	local goal = wall.goal
+	local goal = wall.layers.cells.goal
+	local wanted = target and target.layers.light
+	local current = comparison and comparison.current.layers.light
 	for i = 1, wall.w * wall.h do
-		local status = comparison and comparison.status[i]
 		local base = (i - 1) * 4
-		goal[base + 1] = target and target.filled[i] and 1 or 0
-		goal[base + 2] = (status == "hit" or status == "extra") and 1 or 0
+		goal[base + 1] = wanted and wanted[i] ~= WHITE and 1 or 0
+		goal[base + 2] = current and current[i] ~= WHITE and 1 or 0
 		goal[base + 3] = shadow and not comparison and shadow.covered[i] and 1 or 0
 		goal[base + 4] = shadow and shadow.contact[i] and 1 or 0
+		lightGoal(wall.layers.received.goal, i, current and current[i])
+		lightGoal(wall.layers.target.goal, i, wanted and wanted[i])
 	end
 end
 
@@ -142,7 +171,6 @@ function M.present(walls, display, focus)
 		local matched = comparison ~= nil and comparison.matches
 		if matched and not wall.matched then
 			wall.pulse = 1
-			audio.cue("wall")
 		end
 		wall.matched = matched
 	end
@@ -160,6 +188,12 @@ function M.configure(walls, prefs)
 		go.set(wall.mesh, "base", theme.vec(colors.base))
 		go.set(wall.mesh, "ink", theme.vec(colors.ink))
 		go.set(wall.mesh, "warn", theme.vec(colors.warn))
+	end
+end
+
+function M.attach(walls, parent)
+	for _, wall in pairs(walls.list) do
+		go.set_parent(wall.go, parent)
 	end
 end
 
@@ -185,29 +219,30 @@ local function stepSide(wall, eye, k)
 	end
 end
 
--- Eases `cells` toward `goal` and uploads them as bytes when anything moved.
-local function easeTexture(texture, w, h, cells, goal, k, force)
-	local changed = force
-	for i = 1, #cells do
-		local v, g = cells[i], goal[i]
+-- Eases a layer toward its goal and uploads it as bytes when anything moved.
+local function easeLayer(layer, w, h, k)
+	local now, goal, changed = layer.now, layer.goal, layer.dirty
+	for i = 1, #now do
+		local v, g = now[i], goal[i]
 		if v ~= g then
-			cells[i] = math.abs(g - v) < 0.004 and g or motion.approach(v, g, k)
+			now[i] = math.abs(g - v) < 0.004 and g or motion.approach(v, g, k)
 			changed = true
 		end
 	end
 	if changed then
 		local bytes = {}
-		for i = 1, #cells do
-			bytes[i] = math.floor(cells[i] * 255 + 0.5)
+		for i = 1, #now do
+			bytes[i] = math.floor(now[i] * 255 + 0.5)
 		end
-		resources.updateTexture(texture, w, h, bytes)
+		resources.updateTexture(layer.texture, w, h, bytes)
 	end
+	layer.dirty = false
 end
 
 local function stepCells(wall, k)
-	easeTexture(wall.texture, wall.w, wall.h, wall.cells, wall.goal, k, wall.dirty)
-	easeTexture(wall.focus_texture, wall.w, wall.h, wall.focus, wall.focus_goal, k, wall.focus_dirty)
-	wall.dirty, wall.focus_dirty = false, false
+	for _, layer in pairs(wall.layers) do
+		easeLayer(layer, wall.w, wall.h, k)
+	end
 end
 
 -- Advances fades, cell easing and pulses. eye: unit vector3 from the board toward the camera.

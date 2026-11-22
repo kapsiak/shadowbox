@@ -18,17 +18,22 @@ The working title lives only in `game.project` (`[project] title`) and is read a
 
 ## Layout (dependencies point downward)
 - `main/`: the outer loop (`main.script`, phase order and screen contract documented at the top),
-  screens (`menu_screen`, `select_screen`, `play_screen`), `sheets` (panel stack), `catalog`, `storage`.
-- `game/`: pure session logic: `play` (drag, settle, turn, nudge, undo), `progress`, `settings`.
+  screens (`menu_screen`, `select_screen`, `play_screen`), `sheets` (panel stack), `catalog`,
+  `storage` (two alternating save slots; the newest that loads wins).
+- `game/`: pure session logic: `play` (drag, settle, turn, nudge, undo), `progress`, `settings`,
+  `save_data` (versioned save format: migrations, level fingerprints, validation on load).
 - `core/`: pure puzzle model: `level` (ASCII parsing), `shape`, `orient` (24 rotations),
-  `grid`, `projection`, `rules`, `state`, `history`, `raycast`.
+  `grid`, `channels` (per-ray monoids: light, pattern), `projection` (folds channels), `rules`, `state`, `history`, `raycast`.
 - `input/`: `actions` (Defold → raw events), `router` (controls claim input), `gestures`, `interpret`.
-- `view/`: `board_view` (pieces), `walls_view` (projection panels), `tray_view`, `orbit` (camera
-  rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
+- `view/`: `board_view` (pieces), `walls_view` (projection panels), `tray_view`, `thumbs` (live level
+  thumbnails), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
   `theme` (**all colours and lighting: restyle here**), `palette`.
 - `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout`, `sheets` content), `models`
   (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
-- `render/game.render_script`: background → board → tray → optional scaled-target blit → GUI.
+- `render/game.render_script`: background → `gui_back` (select screen) → board (panels, cubes,
+  glass multiplied over them) → tray → optional
+  scaled-target blit → GUI.
+- `docs/mechanics.md`: agreed design for mechanics beyond silhouettes (not built yet).
 - `levels/`: `index.lua` lists packs; each pack has `pack.lua` and level files; `showcase.lua` is the menu sculpture.
 
 ## Conventions
@@ -36,18 +41,25 @@ snake_case variables, camelCase functions, comments only where needed, Lua 5.1/L
 GUI scripts only draw what `ui/models` publishes; input decisions happen in `main` phases.
 Never commit or modify git; the user does that.
 
-## Status (end of first session)
+## Status (end of second session)
 Done: core model, rendering, camera (ortho snaps), drag with auto-settle, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
-left-handed), fade transitions, saved progress, settings and in-progress boards, synthesized audio.
+left-handed), fade transitions, synthesized audio. Level select: chapters (banner, intro, accent
+from `pack.lua`), levels in switchback rows with a dotted trail, live 3D thumbnails that grow in
+and sway. Saving: versioned format, two slots, boards dropped when their level changes, autosave
+(0.5 s after changes settle, at least every 5 s, at once on solve, screen change, focus loss and
+quit); undo history is kept per level for the session only.
 
 Next, in order:
-1. Level select redesign: packs as chapters (accent colour and intro line from `pack.lua`),
-   levels on a winding path, live 3D thumbnails (solved boards are saved in `boards`), ambient motion.
-2. Final art style (a theme plus assets; deferred by the user to a dedicated session).
-3. Content: packs 1–2 and an authoring guide. 4. Web/mobile builds and touch testing.
-5. Mechanic packs (colored projections, gravity via `core/sim`, top view, glass).
+1. Mechanics prototype (`docs/mechanics.md`): channel fold and glass done (`levels/glass` is a
+   test pack); next, wall and glass legibility (see "Open" in `docs/mechanics.md`), then
+   draw the pattern channel.
+2. Art direction with chapter navigation (a chapter index, then the switchback page per chapter).
+3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
+4. Content: real packs (`levels/towers` is a placeholder) and an authoring guide.
+5. Web/mobile builds and touch testing.
 
-Untested or known: touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`; the
-editor linter shows stale warnings (e.g. `board_view.present` arity, `.axis` field).
+Untested or known: touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
+save on focus loss and quit; the four view buttons share near-identical icons; the editor linter
+shows stale warnings (e.g. `board_view.present` arity, `.axis` field).

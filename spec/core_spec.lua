@@ -56,8 +56,9 @@ describe("level.parse", function()
 		local lvl = assert(parse({ { "AAB", "..B" }, { "A..", "..." } }, { A = "coral", B = "sky" }))
 		assert.same({ 3, 2, 2 }, lvl.size)
 		assert.equal(2, #lvl.pieces)
-		assert.same({ true, true, true, true, false, false }, lvl.targets.front.filled)
-		assert.same({ true, true, true, false }, lvl.targets.side.filled)
+		assert.same({ "light" }, lvl.channels)
+		assert.same({ 0, 0, 0, 0, 7, 7 }, lvl.targets.front.layers.light)
+		assert.same({ 0, 0, 0, 7 }, lvl.targets.side.layers.light)
 	end)
 
 	it("rejects malformed levels with a reason", function()
@@ -67,6 +68,9 @@ describe("level.parse", function()
 			{ { { "AB" } }, { A = "red" }, "missing from pieces" },
 			{ { { "A." } }, { A = "red", B = "sky" }, "not drawn" },
 			{ { { "A.A" } }, { A = "red" }, "not face%-connected" },
+			{ { { "A" } }, { A = { glass = "teal" } }, "unknown glass 'teal'" },
+			{ { { "A" } }, { A = { colour = "red" } }, "unknown property 'colour'" },
+			{ { { "A" } }, { A = { pattern = "grid" } }, "need a color" },
 		}
 		for _, case in ipairs(cases) do
 			local lvl, err = parse(case[1], case[2])
@@ -79,6 +83,28 @@ describe("level.parse", function()
 		local lvl, err = level.load("os.exit(1)", "evil")
 		assert.is_nil(lvl)
 		assert.truthy(err:find("os"))
+	end)
+end)
+
+describe("projection", function()
+	it("filters light through glass and blocks it with opaque cubes", function()
+		local lvl = assert(parse({ { "ABC" }, { "AB." } }, { A = { glass = "cyan" }, B = { glass = "yellow" }, C = "coral" }))
+		assert.same({ 0, 2 }, lvl.targets.side.layers.light)
+		assert.same({ 6, 3, 0, 6, 3, 7 }, lvl.targets.front.layers.light)
+	end)
+
+	it("folds each channel independently", function()
+		local lvl = assert(parse({ { "AB" } }, { A = { glass = "magenta", pattern = "horizontal" }, B = { glass = "yellow", pattern = "vertical" } }))
+		assert.same({ "light", "pattern" }, lvl.channels)
+		assert.same({ 1 }, lvl.targets.side.layers.light)
+		assert.same({ 3 }, lvl.targets.side.layers.pattern)
+	end)
+
+	it("judges a cell by every channel", function()
+		local lvl = assert(parse({ { "AB" } }, { A = { glass = "cyan" }, B = { glass = "yellow" } }))
+		local swapped = { poses = { lvl.solution[2], lvl.solution[1] } }
+		assert.is_true(rules.evaluate(lvl, swapped).views.side.matches)
+		assert.is_false(rules.evaluate(lvl, swapped).views.front.matches)
 	end)
 end)
 

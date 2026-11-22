@@ -10,11 +10,12 @@ function M.applyLight(mesh)
 	go.set(mesh, "ground", theme.vec(light.ground))
 	go.set(mesh, "key_color", theme.vec(light.key))
 	go.set(mesh, "key_dir", vmath.vector4(light.key_dir[1], light.key_dir[2], light.key_dir[3], 0))
+	go.set(mesh, "edges", vmath.vector4(theme.edges[1], theme.edges[2], theme.edges[3], 0))
 end
 
 -- prefs: { colors = palette name, patterns = bool }.
 function M.apply(mesh, level, id, prefs)
-	go.set(mesh, "tint", palette.color(level.pieces[id].color, prefs.colors))
+	go.set(mesh, "tint", palette.pieceColor(level.pieces[id], prefs.colors))
 	go.set(mesh, "pattern", vmath.vector4(prefs.patterns and (id - 1) % 6 + 1 or 0, 0, 0, 0))
 end
 

@@ -11,6 +11,6 @@ textures {
   name: "hud"
   texture: "/ui/hud.atlas"
 }
-material: "/builtins/materials/gui.material"
+material: "/materials/gui_back.material"
 adjust_reference: ADJUST_REFERENCE_DISABLED
 max_nodes: 2048

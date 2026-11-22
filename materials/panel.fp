@@ -11,6 +11,10 @@ uniform mediump sampler2D cells;
 uniform mediump sampler2D soft;
 // Per cell, r: how strongly the selected piece casts onto it (outlined in `accent`).
 uniform mediump sampler2D focus;
+// Per cell, the light received and wanted: rgb a glass colour when a = 1,
+// darkness (ink) when a = 0.
+uniform mediump sampler2D received;
+uniform mediump sampler2D target;
 
 uniform fs_uniforms
 {
@@ -46,7 +50,14 @@ void main()
     }
 
     bool inside = all(greaterThanEqual(var_uv, vec2(0.0))) && all(lessThan(var_uv, vec2(1.0)));
-    vec4 s = inside ? texture(cells, (cell + 0.5) / dims.xy) : vec4(0.0);
+    vec2 cell_uv = (cell + 0.5) / dims.xy;
+    vec4 s = inside ? texture(cells, cell_uv) : vec4(0.0);
+    vec4 received_t = inside ? texture(received, cell_uv) : vec4(0.0);
+    vec4 want_t = inside ? texture(target, cell_uv) : vec4(0.0);
+    vec3 received_color = mix(ink.rgb, received_t.rgb, received_t.a);
+    vec3 want_color = mix(ink.rgb, want_t.rgb, want_t.a);
+    // Covered with the wrong light: the wanted colour stays visible as a ring over the fill.
+    float wrong = s.r * s.g * smoothstep(0.04, 0.15, distance(received_color, want_color));
     float contact = texture(soft, var_uv).a;
     // Unjudged coverage (the floor's live shadow) and contact are read filtered, so both are soft.
 
@@ -61,10 +72,11 @@ void main()
     vec3 color = base.rgb * (1.0 - 0.14 * contact);
     color = mix(color, color * 0.93, fill);
     color = mix(color, base.rgb * vec3(0.8, 0.81, 0.86), shade * mix(0.55, 1.0, fill));
-    color = mix(color, mix(base.rgb, ink.rgb, 0.6), s.r * ring);
-    color = mix(color, mix(warn.rgb, ink.rgb, s.r), s.g * covered);
+    color = mix(color, mix(base.rgb, want_color, mix(0.6, 1.0, want_t.a)), s.r * ring);
+    color = mix(color, mix(warn.rgb, received_color, s.r), s.g * covered);
+    color = mix(color, want_color, wrong * ring);
 
-    float echo = inside ? texture(focus, (cell + 0.5) / dims.xy).r : 0.0;
+    float echo = inside ? texture(focus, cell_uv).r : 0.0;
     float echo_d = roundedBox(local, vec2(0.485), 0.16);
     float echo_ring = 1.0 - smoothstep(0.0, 2.0 * aa, abs(echo_d + 0.025) - 0.022);
     vec3 echo_color = accent.rgb * 0.82;

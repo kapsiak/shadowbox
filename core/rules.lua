@@ -37,16 +37,16 @@ end
 
 -- Projections of the current arrangement compared to each target, and whether the level is solved.
 function M.evaluate(level, state)
-	local cells, placed = {}, 0
+	local items, placed = {}, 0
 	for id, pose in pairs(state.poses) do
 		placed = placed + 1
-		for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
-			cells[#cells + 1] = c
-		end
+		local piece = level.pieces[id]
+		items[#items + 1] = { cells = shape.cellsAt(piece.shape, pose), value = piece.value }
 	end
 	local views, solved = {}, true
 	for _, v in ipairs(level.views) do
-		views[v] = projection.compare(level.targets[v], projection.project(level.size, cells, v))
+		local current = projection.project(level.size, v, level.channels, items)
+		views[v] = projection.compare(level.targets[v], current)
 		solved = solved and views[v].matches
 	end
 	if level.rules.use_all then

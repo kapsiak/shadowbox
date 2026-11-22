@@ -19,7 +19,7 @@ function M.enter(showcase, factories)
 	local state = { poses = showcase.solution }
 	local screen = {
 		module = M, level = showcase, sheets = { "main_menu" }, buffers = buffers,
-		board = board_view.create(showcase, { piece = factories.piece, panel = factories.panel }, buffers),
+		board = board_view.create(showcase, factories, buffers),
 		rig = orbit.new(board_view.bounds(showcase)),
 		interpreter = interpret.new(1),
 		display = { poses = showcase.solution, evaluation = rules.evaluate(showcase, state) },

@@ -1,4 +1,6 @@
 return {
 	title = "Basics",
-	levels = { "first_light", "corner", "stairs" },
+	intro = "Two walls, a handful of pieces.",
+	accent = "sky",
+	levels = { "first_light", "corner", "stairs", "cube" },
 }

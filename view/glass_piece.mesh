@@ -1,0 +1,5 @@
+material: "/materials/cube_glass.material"
+vertices: "/view/placeholder.buffer"
+primitive_type: PRIMITIVE_TRIANGLES
+position_stream: "position"
+normal_stream: "normal"

@@ -1,56 +1,126 @@
--- The level select screen: a header per pack and a grid of level cards, scrolled vertically.
--- Pure: positions are window pixels with the origin at the bottom left.
+-- The level select screen: each pack is a chapter, a banner followed by its levels on a trail
+-- that switches back and forth across rows, scrolled vertically. Pure: positions are window
+-- pixels with the origin at the bottom left.
 local progress = require "game.progress"
 
 local M = {}
 
-local CARD_DP = 150
-local GAP = 0.12
+local NODE_DP = 120
+local CELL = 1.55
+local ROW = 1.6
+local MAX_COLUMNS = 6
+local DOT_SPACING = 0.15
+local GAP = 0.58
+local TURN = 0.32
+local SAMPLES = 32
+local FOCUS_HEIGHT = 0.45
 
--- screen: { w, h, scale, safe }; scroll: pixels scrolled down from the top.
--- Returns { title, headers, cards, max_scroll }. Cards carry their level's front target so
--- the screen can draw a small silhouette of it.
+-- Dots spaced evenly by arc length along the curve at(t), t in [0, 1].
+local function trailDots(dots, at, node, accent, lit)
+	local samples, length = { { at(0) } }, 0
+	samples[1][3] = 0
+	for i = 1, SAMPLES do
+		local x, y = at(i / SAMPLES)
+		local last = samples[#samples]
+		length = length + math.sqrt((x - last[1]) ^ 2 + (y - last[2]) ^ 2)
+		samples[#samples + 1] = { x, y, length }
+	end
+	local count = math.max(1, math.floor(length / (node * DOT_SPACING)))
+	local j = 1
+	for i = 0, count do
+		local d = length * i / count
+		while j < SAMPLES and samples[j + 1][3] < d do
+			j = j + 1
+		end
+		local a, b = samples[j], samples[j + 1]
+		local f = (d - a[3]) / math.max(b[3] - a[3], 1e-6)
+		dots[#dots + 1] = {
+			x = a[1] + (b[1] - a[1]) * f, y = a[2] + (b[2] - a[2]) * f,
+			size = node * 0.07, accent = accent, lit = lit,
+		}
+	end
+end
+
+-- The trail between neighbouring levels: straight within a row; at the end of a row, a
+-- half loop outside it down to the next row.
+local function trailCurve(from, to, node)
+	if from.y == to.y then
+		local dir = to.x > from.x and 1 or -1
+		local x0, x1 = from.x + dir * node * GAP, to.x - dir * node * GAP
+		return function(t)
+			return x0 + (x1 - x0) * t, from.y
+		end
+	end
+	local side, drop = from.side, from.y - to.y
+	return function(t)
+		local a = math.pi * t
+		return from.x + side * node * (GAP + TURN * math.sin(a)), from.y - drop * (1 - math.cos(a)) / 2
+	end
+end
+
+local function levelState(saved, catalog, p, l)
+	local key = catalog.packs[p].keys[l]
+	return progress.isSolved(saved, key) and "solved" or progress.isOpen(saved, catalog, p, l) and "open" or "locked"
+end
+
+-- screen: { w, h, scale, safe, settings }; scroll: pixels scrolled down from the top.
+-- Returns { title, banners, nodes, trail, calm, max_scroll, focus }, where focus is the scroll
+-- that brings the current level (the next one to play) to the middle of the screen.
 function M.compute(screen, catalog, saved, scroll)
 	local w, h, safe = screen.w, screen.h, screen.safe
 	local short = math.min(w, h)
 	local margin = math.max(short * 0.04, 16 * screen.scale) + math.max(safe.left, safe.right)
-	local usable = w - 2 * margin
-	local target = math.min(math.max(CARD_DP * screen.scale, short * 0.18), short * 0.3)
-	local columns = math.max(2, math.floor((usable + target * GAP) / (target * (1 + GAP))))
-	local card_w = (usable - (columns - 1) * target * GAP) / columns
-	local card_h = card_w * 1.18
-	local gap = card_w * GAP
+	local node = math.min(math.max(NODE_DP * screen.scale, short * 0.17), short * 0.28)
+	local usable = w - 2 * (margin + node * (TURN + 0.1))
+	local columns = math.max(2, math.min(MAX_COLUMNS, math.floor(usable / (node * CELL))))
+	local cell = math.min(usable / columns, node * CELL * 1.3)
+	local cx = w / 2
+	local left = cx - cell * columns / 2
+	local cur_p, cur_l = progress.next(saved, catalog, 1, 0)
 
 	local title_size = math.min(short * 0.06, 34 * screen.scale)
 	local y = h - safe.top - margin - title_size * 0.6 + scroll
-	local layout = { title = { text = "Levels", x = w / 2, y = y, size = title_size }, headers = {}, cards = {} }
-	y = y - title_size * 1.6
+	local layout = {
+		title = { text = "Levels", x = cx, y = y, size = title_size },
+		banners = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
+	}
+	local focus_y
+	y = y - title_size * 2
 
 	for p, pack in ipairs(catalog.packs) do
 		local open_pack = progress.isPackOpen(saved, catalog, p)
-		layout.headers[#layout.headers + 1] = {
-			id = pack.id, x = margin, y = y, size = title_size * 0.62,
-			text = pack.title, detail = ("%d / %d"):format(progress.solvedCount(saved, pack), #pack.keys),
+		layout.banners[#layout.banners + 1] = {
+			id = pack.id, x = cx, y = y, size = title_size * 0.8, accent = pack.accent,
+			text = pack.title, intro = open_pack and pack.intro or "Locked",
+			detail = ("%d / %d"):format(progress.solvedCount(saved, pack), #pack.keys),
 			enabled = open_pack,
 		}
-		y = y - title_size * 0.9 - card_h / 2
+		local top = y - title_size * 1.6 - node * 0.75
+		local previous
 		for l, key in ipairs(pack.keys) do
-			local column = (l - 1) % columns
-			local state = progress.isSolved(saved, key) and "solved"
-				or progress.isOpen(saved, catalog, p, l) and "open" or "locked"
-			layout.cards[#layout.cards + 1] = {
-				id = key, pack = p, index = l, number = l, name = pack.levels[l].name,
-				target = pack.levels[l].targets.front, state = state, enabled = state ~= "locked",
-				x = margin + card_w / 2 + column * (card_w + gap), y = y, w = card_w, h = card_h,
+			local row, column = math.floor((l - 1) / columns), (l - 1) % columns
+			local reversed = row % 2 == 1
+			local state = levelState(saved, catalog, p, l)
+			local spec = {
+				id = key, pack = p, index = l, name = pack.levels[l].name, state = state,
+				current = p == cur_p and l == cur_l, accent = pack.accent, enabled = state ~= "locked",
+				x = left + cell * ((reversed and columns - 1 - column or column) + 0.5),
+				y = top - row * node * ROW, size = node, side = reversed and -1 or 1,
 			}
-			if column == columns - 1 or l == #pack.keys then
-				y = y - card_h - gap
+			layout.nodes[#layout.nodes + 1] = spec
+			if previous then
+				trailDots(layout.trail, trailCurve(previous, spec, node), node, pack.accent, previous.state == "solved")
 			end
+			if spec.current then
+				focus_y = spec.y - scroll
+			end
+			previous = spec
 		end
-		y = y + card_h / 2 + gap - title_size
+		y = previous.y - node * 0.75 - title_size * 1.8
 	end
 	local content_bottom = y - scroll
 	layout.max_scroll = math.max(0, safe.bottom + margin - content_bottom)
+	layout.focus = focus_y and math.max(0, math.min(layout.max_scroll, h * FOCUS_HEIGHT - focus_y)) or 0
 	return layout
 end
 

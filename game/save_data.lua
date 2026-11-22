@@ -1,0 +1,125 @@
+-- The save format: what the game keeps between runs, versioned, and cleaned when read back.
+-- Pure Lua. Levels are named by key ("pack/name"), never by position, so adding or reordering
+-- levels keeps progress. A saved board carries a fingerprint of its level and is dropped if
+-- the level has changed since.
+--
+-- In memory: { progress, settings, last = { pack, index } or nil, boards = { [key] = poses } }
+-- On disk (version 1): { version, progress, settings, last = key, boards = { [key] = { fingerprint, poses } } }
+local progress = require "game.progress"
+local settings = require "game.settings"
+local play = require "game.play"
+local shape = require "core.shape"
+local orient = require "core.orient"
+local channels = require "core.channels"
+
+local M = {}
+
+M.VERSION = 1
+
+local function levelIndex(catalog)
+	local index = {}
+	for p, pack in ipairs(catalog.packs) do
+		for l, key in ipairs(pack.keys) do
+			index[key] = { pack = p, index = l, level = pack.levels[l] }
+		end
+	end
+	return index
+end
+
+local fingerprints = setmetatable({}, { __mode = "k" })
+
+-- A number that changes whenever the level's size, pieces or arrangement change.
+function M.fingerprint(level)
+	if fingerprints[level] then
+		return fingerprints[level]
+	end
+	local parts = { table.concat(level.size, ",") }
+	for id, piece in ipairs(level.pieces) do
+		parts[#parts + 1] = piece.color or ""
+		for _, name in ipairs(channels.order) do
+			parts[#parts + 1] = piece.value[name]
+		end
+		for _, c in ipairs(shape.cellsAt(piece.shape, level.solution[id])) do
+			parts[#parts + 1] = table.concat(c, ",")
+		end
+	end
+	local text, hash = table.concat(parts, ";"), 5381
+	for i = 1, #text do
+		hash = (hash * 33 + text:byte(i)) % 4294967296
+	end
+	fingerprints[level] = hash
+	return hash
+end
+
+local function isInteger(n)
+	return type(n) == "number" and n == math.floor(n)
+end
+
+local function isPose(pose)
+	if type(pose) ~= "table" or type(pose.cell) ~= "table" then
+		return false
+	end
+	local c = pose.cell
+	return isInteger(c[1]) and isInteger(c[2]) and isInteger(c[3])
+		and isInteger(pose.orient) and pose.orient >= 1 and pose.orient <= orient.count
+end
+
+-- The poses that are well formed and fit the level together.
+local function cleanPoses(level, poses)
+	local formed = {}
+	for id, pose in pairs(type(poses) == "table" and poses or {}) do
+		if level.pieces[id] and isPose(pose) then
+			formed[id] = { cell = { pose.cell[1], pose.cell[2], pose.cell[3] }, orient = pose.orient }
+		end
+	end
+	return play.fitting(level, formed).poses
+end
+
+-- Each migration upgrades data from one version to the next: [v] = function(data, index, catalog).
+local migrations = {}
+
+function M.encode(app, catalog)
+	local index = levelIndex(catalog)
+	local boards = {}
+	for key, poses in pairs(app.boards) do
+		if index[key] and next(poses) then
+			boards[key] = { fingerprint = M.fingerprint(index[key].level), poses = poses }
+		end
+	end
+	local last = app.last and catalog.packs[app.last.pack]
+	return {
+		version = M.VERSION,
+		progress = progress.data(app.progress),
+		settings = app.settings,
+		last = last and last.keys[app.last.index],
+		boards = boards,
+	}
+end
+
+-- Reads saved data (or nothing) into the in-memory form, dropping whatever
+-- is malformed or no longer matches the catalog.
+function M.decode(data, catalog)
+	data = type(data) == "table" and data or {}
+	local index = levelIndex(catalog)
+	local version = isInteger(data.version) and data.version or 0
+	while migrations[version] and version < M.VERSION do
+		data = migrations[version](data, index, catalog)
+		version = version + 1
+	end
+	local boards = {}
+	for key, board in pairs(type(data.boards) == "table" and data.boards or {}) do
+		local entry = index[key]
+		if entry and type(board) == "table" and board.fingerprint == M.fingerprint(entry.level) then
+			boards[key] = cleanPoses(entry.level, board.poses)
+		end
+	end
+	local last = type(data.last) == "string" and index[data.last]
+	return {
+		progress = progress.new(type(data.progress) == "table" and data.progress or nil),
+		settings = settings.new(type(data.settings) == "table" and data.settings or nil),
+		last = last and { pack = last.pack, index = last.index } or nil,
+		boards = boards,
+	}
+end
+
+return M

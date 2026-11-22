@@ -15,17 +15,28 @@ local KICKS = {
 	{ 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0 }, { 0, 2, 0 },
 }
 
--- saved: optional poses from an earlier visit ({ [piece_id] = pose }); poses that no longer
--- fit the level are dropped.
-function M.new(level, saved)
-	local start = state.new()
-	for id, pose in pairs(saved or {}) do
-		local outcome = level.pieces[id] and rules.check(level, start, { kind = "place", piece = id, pose = pose })
+-- The state holding those of `poses` ({ [piece_id] = pose }) that fit the level; the rest
+-- are left in the tray.
+function M.fitting(level, poses)
+	local fit = state.new()
+	for id, pose in pairs(poses or {}) do
+		local outcome = level.pieces[id] and rules.check(level, fit, { kind = "place", piece = id, pose = pose })
 		if outcome then
-			start = state.apply(start, outcome)
+			fit = state.apply(fit, outcome)
 		end
 	end
-	return { level = level, history = history.new(start), selected = nil, drag = nil }
+	return fit
+end
+
+-- saved: optional poses from an earlier visit; poses that no longer fit are dropped.
+function M.new(level, saved)
+	return { level = level, history = history.new(M.fitting(level, saved)), selected = nil, drag = nil }
+end
+
+-- Returns to a session left earlier, keeping its history but nothing in hand.
+function M.resume(s)
+	s.selected, s.drag = nil, nil
+	return s
 end
 
 -- True when any piece is on the board.

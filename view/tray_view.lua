@@ -3,6 +3,7 @@
 -- tray looks as it will on the board. Layout is in screen pixels, so picking is a rectangle test.
 local orient = require "core.orient"
 local piece_look = require "view.piece_look"
+local palette = require "view.palette"
 local cameras = require "view.cameras"
 
 local M = {}
@@ -25,10 +26,11 @@ local function boxOf(cells)
 end
 
 -- The tray scene lives far from the board, seen by its own camera ("tray" in view/cameras).
-function M.create(level, factory_url, buffers)
+-- factories: { tray_piece, glass_tray_piece } urls.
+function M.create(level, factories, buffers)
 	local view = { level = level, pieces = {}, slots = {}, height = 0, extent = 1, count = #level.pieces }
 	for _, piece in ipairs(level.pieces) do
-		local id = factory.create(factory_url)
+		local id = factory.create(palette.isGlass(piece) and factories.glass_tray_piece or factories.tray_piece)
 		local mesh = msg.url(nil, id, "mesh")
 		go.set(mesh, "vertices", buffers[piece.id])
 		piece_look.applyLight(mesh)

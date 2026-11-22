@@ -20,6 +20,10 @@ uniform fs_uniforms
     mediump vec4 sky;
     mediump vec4 ground;
     mediump vec4 key_color;
+    // x: 1 for glass, drawn as a filter that multiplies what lies behind it
+    mediump vec4 glass;
+    // x: highlight along outer edges, y: brightness at the outline, z: darkening along seams
+    mediump vec4 edges;
 };
 
 // Coverage of a simple pattern in face uv: dots, stripes, cross, rings, bars or checks.
@@ -55,7 +59,9 @@ void main()
     {
         base = mix(base, base * 0.78, patternMask(pattern.x, var_uv));
     }
-    vec3 color = base * (hemi + key) * occlusion;
+    vec3 lit = (hemi + key) * occlusion;
+    // Glass keeps its filter colour, paler on lit faces so the piece still reads as a solid.
+    vec3 color = glass.x > 0.5 ? mix(base, vec3(1.0), 0.35 * clamp(dot(lit, vec3(0.333)) - 0.6, 0.0, 1.0)) : base * lit;
 
     // Edge lines are at least about a pixel wide and fade as they would get thinner, so
     // they stay crisp up close and never shimmer in the distance.
@@ -64,10 +70,10 @@ void main()
     float seam = flaggedDistance(vec4(1.0) - var_edge);
     float outer_width = max(0.025, pixel);
     float seam_width = max(0.02, pixel);
-    color += vec3(0.1) * (1.0 - smoothstep(0.0, max(0.08, 2.0 * pixel), outer));
-    color *= mix(0.78, 1.0, smoothstep(0.0, outer_width, outer));
+    color += vec3(edges.x) * (1.0 - smoothstep(0.0, max(0.08, 2.0 * pixel), outer));
+    color *= mix(edges.y, 1.0, smoothstep(0.0, outer_width, outer));
     float seam_fade = clamp(0.02 / seam_width, 0.0, 1.0);
-    color *= mix(1.0 - 0.1 * seam_fade, 1.0, smoothstep(0.0, seam_width, seam));
+    color *= mix(1.0 - edges.z * seam_fade, 1.0, smoothstep(0.0, seam_width, seam));
 
     // Selection lifts the whole piece and adds a rim light in a pale version of its own colour,
     // leaving the edges alone so it never reads as the bevel highlight. Hover is a lighter lift.
@@ -84,5 +90,5 @@ void main()
     color = mix(color, vec3(0.93, 0.4, 0.38), fx.z * band);
 
     float alpha = (1.0 - 0.5 * fx.y) * (1.0 - 0.4 * fx.z);
-    out_fragColor = vec4(color * alpha, alpha);
+    out_fragColor = glass.x > 0.5 ? vec4(min(mix(vec3(1.0), color, alpha), 1.0), 1.0) : vec4(color * alpha, alpha);
 }

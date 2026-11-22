@@ -2,6 +2,7 @@
 package.path = "./?.lua;" .. package.path
 
 local level = require "core.level"
+local channels = require "core.channels"
 
 local function readFile(path)
 	local f, err = io.open(path, "r")
@@ -13,12 +14,17 @@ local function readFile(path)
 	return source
 end
 
-local function projectionRows(proj)
+local glyphs = {
+	light = { [0] = "#", "r", "g", "y", "b", "m", "c", "." },
+	pattern = { [0] = ".", "-", "|", "+" },
+}
+
+local function layerRows(proj, name)
 	local rows = {}
 	for v = proj.h - 1, 0, -1 do
 		local row = {}
 		for u = 0, proj.w - 1 do
-			row[#row + 1] = proj.filled[u + v * proj.w + 1] and "#" or "."
+			row[#row + 1] = glyphs[name][proj.layers[name][u + v * proj.w + 1]]
 		end
 		rows[#rows + 1] = table.concat(row, " ")
 	end
@@ -27,14 +33,17 @@ end
 
 local function printSideBySide(level_data)
 	local columns, width, height = {}, {}, 0
-	for i, v in ipairs(level_data.views) do
-		columns[i] = projectionRows(level_data.targets[v])
-		table.insert(columns[i], 1, v)
-		width[i] = 0
-		for _, row in ipairs(columns[i]) do
-			width[i] = math.max(width[i], #row)
+	for _, v in ipairs(level_data.views) do
+		for _, name in ipairs(level_data.channels) do
+			local column = layerRows(level_data.targets[v], name)
+			table.insert(column, 1, #level_data.channels > 1 and v .. " " .. name or v)
+			local w = 0
+			for _, row in ipairs(column) do
+				w = math.max(w, #row)
+			end
+			columns[#columns + 1], width[#columns + 1] = column, w
+			height = math.max(height, #column)
 		end
-		height = math.max(height, #columns[i])
 	end
 	for r = 1, height do
 		local line = {}
@@ -59,7 +68,16 @@ local function preview(path)
 	local s = lvl.size
 	print(("%s  (%s)  %dx%dx%d"):format(lvl.name, path, s[1], s[2], s[3]))
 	for _, p in ipairs(lvl.pieces) do
-		print(("  %s  %-8s %d cubes"):format(p.key, p.color, p.shape.size))
+		local look = p.color or ""
+		for _, name in ipairs(lvl.channels) do
+			local channel = channels[name]
+			for word, n in pairs(channel.names) do
+				if n == p.value[name] then
+					look = look .. " " .. channel.key .. "=" .. word
+				end
+			end
+		end
+		print(("  %s  %-24s %d cubes"):format(p.key, look, p.shape.size))
 	end
 	printSideBySide(lvl)
 	print()

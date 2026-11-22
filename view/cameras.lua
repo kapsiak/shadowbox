@@ -12,6 +12,16 @@ function M.set(name, position, rotation, fov, aspect, near, far)
 	passes[name] = { view = view, proj = proj, frustum = proj * view, inverse = vmath.inv(proj * view) }
 end
 
+-- A narrow perspective camera under which the z = 0 plane maps exactly onto a w x h screen,
+-- one world unit per pixel, so 3D objects can sit at screen positions. Returns the camera
+-- position, from which objects can find their eye direction.
+function M.setScreen(name, w, h, fov)
+	local distance = h / 2 / math.tan(fov / 2)
+	local position = vmath.vector3(w / 2, h / 2, distance)
+	M.set(name, position, vmath.quat(), fov, w / h, distance * 0.5, distance * 1.5)
+	return position
+end
+
 function M.clear(name)
 	passes[name] = nil
 end

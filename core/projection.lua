@@ -1,4 +1,7 @@
--- Orthographic projections of cells onto a view's (u, v) plane, as dense boolean grids.
+-- Orthographic projections onto a view's (u, v) plane. `project` folds piece values along
+-- each ray, one layer per channel; `cover` is the bare geometry: which cells anything reaches.
+local channels = require "core.channels"
+
 local M = {}
 
 M.axes = {
@@ -7,37 +10,57 @@ M.axes = {
 	top = { u = 1, v = 3 },
 }
 
-function M.project(size, cells, view)
+local function dims(size, view)
 	local axes = M.axes[view]
-	local w, h = size[axes.u], size[axes.v]
-	local filled = {}
-	for i = 1, w * h do
-		filled[i] = false
-	end
-	for _, c in ipairs(cells) do
-		filled[c[axes.u] + c[axes.v] * w + 1] = true
-	end
-	return { w = w, h = h, filled = filled }
+	return axes, size[axes.u], size[axes.v]
 end
 
--- Per-cell status: "hit" (wanted and covered), "missing", "extra", or false (neither).
-function M.compare(target, current)
-	local status = {}
-	local matches = true
-	for i, wanted in ipairs(target.filled) do
-		local covered = current.filled[i]
-		if wanted and covered then
-			status[i] = "hit"
-		elseif wanted then
-			status[i] = "missing"
-		elseif covered then
-			status[i] = "extra"
-		else
-			status[i] = false
+-- items: list of { cells, value }, value holding a number per channel in `names`.
+-- Returns { w, h, layers = { [channel] = dense array of folded values } }.
+function M.project(size, view, names, items)
+	local axes, w, h = dims(size, view)
+	local layers = {}
+	for _, name in ipairs(names) do
+		local channel, layer = channels[name], {}
+		for i = 1, w * h do
+			layer[i] = channel.identity
 		end
-		matches = matches and wanted == covered
+		for _, item in ipairs(items) do
+			local v = item.value[name]
+			for _, c in ipairs(item.cells) do
+				local i = c[axes.u] + c[axes.v] * w + 1
+				layer[i] = channel.combine(layer[i], v)
+			end
+		end
+		layers[name] = layer
 	end
-	return { w = target.w, h = target.h, status = status, matches = matches }
+	return { w = w, h = h, layers = layers }
+end
+
+function M.cover(size, cells, view)
+	local axes, w, h = dims(size, view)
+	local covered = {}
+	for i = 1, w * h do
+		covered[i] = false
+	end
+	for _, c in ipairs(cells) do
+		covered[c[axes.u] + c[axes.v] * w + 1] = true
+	end
+	return covered
+end
+
+-- A cell is ok when every channel equals the target's.
+function M.compare(target, current)
+	local ok, matches = {}, true
+	for i = 1, target.w * target.h do
+		local same = true
+		for name, layer in pairs(target.layers) do
+			same = same and layer[i] == current.layers[name][i]
+		end
+		ok[i] = same
+		matches = matches and same
+	end
+	return { target = target, current = current, ok = ok, matches = matches }
 end
 
 return M

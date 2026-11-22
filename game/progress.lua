@@ -12,7 +12,7 @@ local PACK_THRESHOLD = 0.5
 
 function M.new(data)
 	local solved = {}
-	for key, value in pairs(data and data.solved or {}) do
+	for key, value in pairs(data and type(data.solved) == "table" and data.solved or {}) do
 		solved[key] = value == true or nil
 	end
 	return { solved = solved }

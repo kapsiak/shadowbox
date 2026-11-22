@@ -28,11 +28,11 @@ local function cellCenter(c)
 	return vmath.vector3(c[1] + 0.5, c[2] + 0.5, c[3] + 0.5)
 end
 
--- factories: { piece = url, panel = url }; buffers: piece mesh buffers (view/piece_meshes).
+-- factories: { piece, glass_piece, panel } urls; buffers: piece mesh buffers (view/piece_meshes).
 function M.create(level, factories, buffers)
 	local view = { level = level, pieces = {}, time = 0, walls = walls_view.create(level, factories.panel) }
 	for _, piece in ipairs(level.pieces) do
-		local id = factory.create(factories.piece)
+		local id = factory.create(palette.isGlass(piece) and factories.glass_piece or factories.piece)
 		local mesh = msg.url(nil, id, "mesh")
 		go.set(mesh, "vertices", buffers[piece.id])
 		piece_look.applyLight(mesh)
@@ -54,7 +54,7 @@ function M.present(view, display, selected, hovered)
 		p.lifted = id == display.dragging
 		p.goal_fx = vmath.vector4(id == selected and 1 or 0, 0, id == display.invalid and 1 or 0, id == hovered and 1 or 0)
 	end
-	local focus = selected and { piece = selected, color = palette.color(view.level.pieces[selected].color, view.colors) }
+	local focus = selected and { piece = selected, color = palette.pieceColor(view.level.pieces[selected], view.colors) }
 	walls_view.present(view.walls, display, focus)
 end
 
@@ -70,6 +70,14 @@ function M.configure(view, prefs)
 		end
 	end
 	walls_view.configure(view.walls, prefs)
+end
+
+-- Moves the board under `parent`, a game object whose transform places it in the world.
+function M.attach(view, parent)
+	for _, p in pairs(view.pieces) do
+		go.set_parent(p.go, parent)
+	end
+	walls_view.attach(view.walls, parent)
 end
 
 -- A refused move: the piece shakes in place.

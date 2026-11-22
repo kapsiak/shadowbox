@@ -22,17 +22,18 @@ local function toTable(v)
 	return { v.x, v.y, v.z }
 end
 
--- factories: { piece, panel, tray_piece } urls; saved: the board as last left, or nil.
-function M.enter(pack, index, factories, saved)
+-- factories: { piece, panel, tray_piece } urls; saved: the board as last left, or nil;
+-- session: this level's session from earlier in this run, kept for its undo history, or nil.
+function M.enter(pack, index, factories, saved, session)
 	local lvl = pack.levels[index]
 	local buffers = piece_meshes.create(lvl)
 	return {
 		module = M, pack = pack, index = index, key = pack.keys[index],
-		session = play.new(lvl, saved), solved = false, hovered = nil, pointer = nil, sheets = {},
+		session = session and play.resume(session) or play.new(lvl, saved), solved = false, hovered = nil, pointer = nil, sheets = {},
 		interpreter = interpret.new(1),
 		buffers = buffers,
-		board = board_view.create(lvl, { piece = factories.piece, panel = factories.panel }, buffers),
-		tray = tray_view.create(lvl, factories.tray_piece, buffers),
+		board = board_view.create(lvl, factories, buffers),
+		tray = tray_view.create(lvl, factories, buffers),
 		rig = orbit.new(board_view.bounds(lvl)),
 	}
 end
@@ -221,10 +222,23 @@ function M.apply(screen, intent, dt)
 	end
 end
 
+-- A wall chimes as it becomes matched, though not for walls already matched on arrival.
+local function cueWalls(screen, evaluation)
+	local arriving = screen.matched == nil
+	screen.matched = screen.matched or {}
+	for name, view in pairs(evaluation.views) do
+		if view.matches and not screen.matched[name] and not arriving then
+			audio.cue("wall")
+		end
+		screen.matched[name] = view.matches
+	end
+end
+
 function M.present(screen, dt, info)
 	local w, h = info.w, info.h
 	local s = screen.session
 	local display = play.display(s)
+	cueWalls(screen, display.evaluation)
 
 	if display.evaluation.solved ~= screen.solved and not s.drag then
 		screen.solved = display.evaluation.solved

@@ -1,26 +1,27 @@
--- Draws the level select layout published in ui/models ("select"): pack headers and level
--- cards, each with its number, name, a small silhouette of its front target and a badge.
+-- Draws the level select layout published in ui/models ("select"): chapter banners, the trail,
+-- and under each level a plinth, its label and a badge. Drawn beneath the 3D thumbnails
+-- (gui_back material), which sit on the plinths.
 local models = require "ui.models"
 
 local theme = require "view.theme"
 
-local FACE = theme.vec(theme.ui.face)
-local SHADOW = theme.vec(theme.ui.shadow)
 local INK = theme.vec(theme.ui.ink)
 local SOFT_INK = theme.vec(theme.ui.soft_ink)
-local CELL_ON = theme.vec(theme.panel.normal.ink)
-local CELL_OFF = theme.vec(theme.ui.cell_off)
+local SHADOW = theme.vec(theme.ui.shadow)
 local SOLVED = theme.vec(theme.ui.solved)
+local LOCKED = theme.vec(theme.ui.cell_off)
 local FONT_SIZE = { title = 64, body = 40 }
 local FADE_RATE = 10
-local SLICE = vmath.vector4(30, 30, 30, 30)
+local PULSE_RATE = 2.4
 
-local function box(texture, image)
+local function accentOf(name)
+	return theme.vec(theme.palettes.default[name] or theme.ui.accent)
+end
+
+local function box(image)
 	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
-	if texture then
-		gui.set_texture(node, texture)
-		gui.play_flipbook(node, image)
-	end
+	gui.set_texture(node, "hud")
+	gui.play_flipbook(node, image)
 	return node
 end
 
@@ -36,76 +37,93 @@ local function withAlpha(color, alpha)
 	return c
 end
 
-local function setText(node, font, value, x, y, size, color, alpha, pivot)
+local function place(node, x, y, w, h, color)
+	gui.set_screen_position(node, vmath.vector3(x, y, 0))
+	gui.set_size(node, vmath.vector3(w, h, 0))
+	gui.set_color(node, color)
+end
+
+local function setText(node, font, value, x, y, size, color, pivot)
 	gui.set_text(node, value)
 	gui.set_pivot(node, pivot or gui.PIVOT_CENTER)
 	gui.set_screen_position(node, vmath.vector3(x, y, 0))
 	local s = size / FONT_SIZE[font]
 	gui.set_scale(node, vmath.vector3(s, s, 1))
-	gui.set_color(node, withAlpha(color, alpha))
+	gui.set_color(node, color)
 end
 
-local function createCard(spec)
-	local card = { shadow = box("hud", "button_shadow"), face = box("hud", "button"), cells = {} }
-	gui.set_slice9(card.face, SLICE)
-	gui.set_slice9(card.shadow, SLICE)
-	local t = spec.target
-	for i = 1, t.w * t.h do
-		card.cells[i] = box("hud", "button")
-	end
-	card.number = text("title")
-	card.name = text("body")
-	card.badge = box("hud", "check")
-	return card
+local function textWidth(font, value, size)
+	return resource.get_text_metrics(gui.get_font_resource(font), value).width * size / FONT_SIZE[font]
 end
 
-local function placeCard(card, spec, alpha)
-	local dim = spec.state == "locked" and 0.45 or 1
-	gui.set_screen_position(card.shadow, vmath.vector3(spec.x, spec.y - spec.h * 0.02, 0))
-	gui.set_size(card.shadow, vmath.vector3(spec.w * 1.04, spec.h * 1.04, 0))
-	gui.set_color(card.shadow, withAlpha(SHADOW, alpha))
-	gui.set_screen_position(card.face, vmath.vector3(spec.x, spec.y, 0))
-	gui.set_size(card.face, vmath.vector3(spec.w, spec.h, 0))
-	gui.set_color(card.face, withAlpha(FACE, alpha))
+local function drawBanner(b, spec, alpha)
+	local a = alpha * (spec.enabled and 1 or 0.45)
+	local accent = accentOf(spec.accent)
+	local title_w = textWidth("title", spec.text, spec.size)
+	local detail_size = spec.size * 0.6
+	local detail_w = textWidth("body", spec.detail, detail_size)
+	local gap = spec.size * 0.5
+	local left = spec.x - (title_w + gap + detail_w) / 2
+	setText(b.title, "title", spec.text, left, spec.y, spec.size, withAlpha(INK, a), gui.PIVOT_W)
+	setText(b.detail, "body", spec.detail, left + title_w + gap, spec.y - spec.size * 0.04, detail_size, withAlpha(SOFT_INK, a), gui.PIVOT_W)
+	place(b.rule, spec.x, spec.y - spec.size * 0.75, spec.size * 2.4, spec.size * 0.12, withAlpha(accent, a))
+	setText(b.intro, "body", spec.intro or "", spec.x, spec.y - spec.size * 1.35, spec.size * 0.58, withAlpha(SOFT_INK, a))
+end
 
-	local t = spec.target
-	local cell = math.min(spec.w * 0.54 / t.w, spec.h * 0.4 / t.h)
-	local left = spec.x - cell * t.w / 2
-	local bottom = spec.y + spec.h * 0.42 - cell * t.h
-	local on = spec.state == "solved" and SOLVED or CELL_ON
-	for i, node in ipairs(card.cells) do
-		local u, v = (i - 1) % t.w, math.floor((i - 1) / t.w)
-		gui.set_screen_position(node, vmath.vector3(left + (u + 0.5) * cell, bottom + (v + 0.5) * cell, 0))
-		gui.set_size(node, vmath.vector3(cell * 0.86, cell * 0.86, 0))
-		gui.set_color(node, withAlpha(t.filled[i] and on or CELL_OFF, alpha * dim))
+local function drawNode(n, spec, alpha, pulse)
+	local s, x, y = spec.size, spec.x, spec.y
+	local accent = accentOf(spec.accent)
+	local locked = spec.state == "locked"
+	place(n.plinth, x, y - s * 0.3, s * 0.95, s * 0.3, withAlpha(locked and LOCKED or SHADOW, alpha))
+	gui.set_enabled(n.halo, spec.current)
+	if spec.current then
+		local grow = 1 + 0.08 * pulse
+		place(n.halo, x, y - s * 0.3, s * 1.25 * grow, s * 0.42 * grow, withAlpha(accent, alpha * (0.55 - 0.2 * pulse)))
 	end
-
-	setText(card.number, "title", tostring(spec.number), spec.x, spec.y - spec.h * 0.12, spec.h * 0.2, INK, alpha * dim)
-	setText(card.name, "body", spec.name, spec.x, spec.y - spec.h * 0.31, spec.h * 0.1, SOFT_INK, alpha * dim)
-
-	local badge = spec.state == "solved" and "check" or spec.state == "locked" and "lock" or nil
-	gui.set_enabled(card.badge, badge ~= nil)
-	if badge then
-		gui.play_flipbook(card.badge, badge)
-		local size = spec.w * 0.14
-		gui.set_screen_position(card.badge, vmath.vector3(spec.x + spec.w * 0.38, spec.y + spec.h * 0.4, 0))
-		gui.set_size(card.badge, vmath.vector3(size, size, 0))
-		gui.set_color(card.badge, withAlpha(badge == "check" and SOLVED or SOFT_INK, alpha))
+	gui.set_enabled(n.lock, locked)
+	if locked then
+		place(n.lock, x, y - s * 0.05, s * 0.32, s * 0.32, withAlpha(SOFT_INK, alpha * 0.6))
+	end
+	local label = locked and tostring(spec.index) or ("%d  %s"):format(spec.index, spec.name)
+	setText(n.label, "body", label, x, y - s * 0.62, s * 0.13, withAlpha(locked and SOFT_INK or INK, alpha * (locked and 0.6 or 1)))
+	gui.set_enabled(n.check, spec.state == "solved")
+	if spec.state == "solved" then
+		local label_w = textWidth("body", label, s * 0.13)
+		place(n.check, x + label_w / 2 + s * 0.12, y - s * 0.62, s * 0.14, s * 0.14, withAlpha(SOLVED, alpha))
 	end
 end
 
-local function header(self, id)
-	self.headers[id] = self.headers[id] or { title = text("title"), detail = text("body") }
-	return self.headers[id]
+local function banner(self, id)
+	self.banners[id] = self.banners[id] or { rule = box("dot"), title = text("title"), detail = text("body"), intro = text("body") }
+	return self.banners[id]
+end
+
+local function levelNode(self, id)
+	self.nodes[id] = self.nodes[id] or {
+		halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check"),
+	}
+	return self.nodes[id]
+end
+
+local function drawTrail(self, trail, alpha)
+	for i, dot in ipairs(trail) do
+		self.dots[i] = self.dots[i] or box("dot")
+		gui.set_enabled(self.dots[i], true)
+		place(self.dots[i], dot.x, dot.y, dot.size, dot.size, withAlpha(accentOf(dot.accent), alpha * (dot.lit and 1 or 0.35)))
+	end
+	for i = #trail + 1, #self.dots do
+		gui.set_enabled(self.dots[i], false)
+	end
 end
 
 function init(self)
-	self.cards, self.headers, self.shown = {}, {}, 0
+	self.nodes, self.banners, self.dots, self.shown, self.time = {}, {}, {}, 0, 0
 	self.title = text("title")
 end
 
 function update(self, dt)
 	local layout = models.layout("select")
+	self.time = self.time + dt
 	self.shown = self.shown + ((layout and 1 or 0) - self.shown) * (1 - math.exp(-FADE_RATE * dt))
 	self.last = layout or self.last
 	local last = self.last
@@ -114,17 +132,13 @@ function update(self, dt)
 	end
 	local alpha = self.shown
 	local title = last.title
-	setText(self.title, "title", title.text, title.x, title.y, title.size, INK, alpha)
-	for _, spec in ipairs(last.headers) do
-		local h = header(self, spec.id)
-		local a = alpha * (spec.enabled and 1 or 0.45)
-		setText(h.title, "title", spec.text, spec.x, spec.y, spec.size, INK, a, gui.PIVOT_W)
-		local metrics = resource.get_text_metrics(gui.get_font_resource("title"), spec.text)
-		local title_width = metrics.width * spec.size / FONT_SIZE.title
-		setText(h.detail, "body", spec.detail, spec.x + title_width + spec.size * 0.6, spec.y - spec.size * 0.05, spec.size * 0.7, SOFT_INK, a, gui.PIVOT_W)
+	setText(self.title, "title", title.text, title.x, title.y, title.size, withAlpha(INK, alpha))
+	drawTrail(self, last.trail, alpha)
+	for _, spec in ipairs(last.banners) do
+		drawBanner(banner(self, spec.id), spec, alpha)
 	end
-	for _, spec in ipairs(last.cards) do
-		self.cards[spec.id] = self.cards[spec.id] or createCard(spec)
-		placeCard(self.cards[spec.id], spec, alpha)
+	local pulse = last.calm and 0 or 0.5 + 0.5 * math.sin(self.time * PULSE_RATE)
+	for _, spec in ipairs(last.nodes) do
+		drawNode(levelNode(self, spec.id), spec, alpha, pulse)
 	end
 end
