@@ -34,6 +34,7 @@ The working title lives only in `game.project` (`[project] title`) and is read a
   glass multiplied over them) → tray → optional
   scaled-target blit → GUI.
 - `docs/mechanics.md`: agreed design for mechanics beyond silhouettes (not built yet).
+- `docs/art_direction.md`: the agreed theme (the shadow workshop); check visual, sound and UI work against it.
 - `levels/`: `index.lua` lists packs; each pack has `pack.lua` and level files; `showcase.lua` is the menu sculpture.
 
 ## Conventions
@@ -55,7 +56,12 @@ Next, in order:
 1. Mechanics prototype (`docs/mechanics.md`): channel fold and glass done (`levels/glass` is a
    test pack); next, wall and glass legibility (see "Open" in `docs/mechanics.md`), then
    draw the pattern channel.
-2. Art direction with chapter navigation (a chapter index, then the switchback page per chapter).
+2. Art direction (`docs/art_direction.md`): the screens are done (paper, merged crisp shadows,
+   pencil contours split by wanted light, hatching for unwanted shadow, wooden frame) and the
+   theme is recoloured to the workshop palette. Still unchecked in play: glass light on paper,
+   contour swallowing and ink on match, focus outline, floor shadow, high contrast. Next: blocks
+   (lacquered wood, no seams, proper glass; tray glass reads opaque), room, interface and
+   typography, sound, then chapter navigation as the sketchbook.
 3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
 4. Content: real packs (`levels/towers` is a placeholder) and an authoring guide.
 5. Web/mobile builds and touch testing.

@@ -185,9 +185,9 @@ function M.configure(walls, prefs)
 	walls.style = style
 	local colors = theme.panel[style]
 	for _, wall in pairs(walls.list) do
-		go.set(wall.mesh, "base", theme.vec(colors.base))
-		go.set(wall.mesh, "ink", theme.vec(colors.ink))
-		go.set(wall.mesh, "warn", theme.vec(colors.warn))
+		for _, key in ipairs({ "paper", "shadow", "pencil", "frame" }) do
+			go.set(wall.mesh, key, theme.vec(colors[key]))
+		end
 	end
 end
 
