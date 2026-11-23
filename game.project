@@ -36,5 +36,10 @@ input_method = HiddenInputField
 
 [html5]
 scale_mode = stretch
+cssfile = /web/theme.css
+splash_image = /web/splash.png
+show_fullscreen_button = 0
+show_made_with_defold = 0
+show_console_banner = 0
 
 

@@ -233,6 +233,18 @@ def mark():
         d.rectangle((s(x0), s(cy - 1.5), s(x1), s(cy + 1.5)), fill=WHITE)
     ink.resize((w, h), Image.LANCZOS).save(OUT / "mark.png")
     accent.resize((w, h), Image.LANCZOS).save(OUT / "mark_accent.png")
+    return ink, accent
+
+
+def splash(ink, accent):
+    """The web build's loading image: the mark in the interface ink and accent, centred on a clear
+    square (the page scales it to fit the canvas, so a square suits both orientations)."""
+    side = 1600
+    img = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    at = ((side - ink.width) // 2, (side - ink.height) // 2)
+    for layer, rgb in ((ink, (33, 33, 38)), (accent, (237, 84, 69))):
+        img.paste(Image.new("RGBA", layer.size, rgb + (255,)), at, layer)
+    img.save(OUT.parent.parent / "web" / "splash.png")
 
 
 def rules():
@@ -247,7 +259,7 @@ def rules():
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    mark()
+    splash(*mark())
     menu()
     curved_arrow("undo")
     curved_arrow("redo", mirror=True)

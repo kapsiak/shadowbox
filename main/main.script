@@ -77,12 +77,23 @@ end
 
 local mobile = isTouchFirst()
 
+-- Browsers allow fullscreen only after a tap or key (so it is not restored on start), and iPhones
+-- not at all.
+local function canFullscreen()
+	if html5 then
+		return html5.run("document.fullscreenEnabled || document.webkitFullscreenEnabled || false") == "true"
+	end
+	return not mobile
+end
+
+local can_fullscreen = defos ~= nil and canFullscreen()
+
 local function screenInfo(self)
 	local w, h = window.get_size()
 	local area = window.get_safe_area()
 	return {
 		w = math.max(w, 1), h = math.max(h, 1), scale = window.get_display_scale() * self.settings.ui_scale,
-		can_fullscreen = defos ~= nil and not mobile,
+		can_fullscreen = can_fullscreen,
 		has_keyboard = not mobile,
 		safe = { left = area.inset_left, right = area.inset_right, top = area.inset_top, bottom = area.inset_bottom },
 		settings = self.settings,
@@ -154,7 +165,7 @@ local function applyDisplay(self)
 	sys.set_vsync_swap_interval(prefs.frame_rate == 0 and 1 or 0)
 	sys.set_update_frequency(prefs.frame_rate)
 	frame.scale = settings.renderScale(prefs.quality)
-	if defos and not mobile and defos.is_fullscreen() ~= prefs.fullscreen then
+	if can_fullscreen and defos.is_fullscreen() ~= prefs.fullscreen then
 		defos.set_fullscreen(prefs.fullscreen)
 	end
 end
@@ -263,8 +274,15 @@ function init(self)
 	window.set_listener(function(self, event)
 		if event == window.WINDOW_EVENT_FOCUS_LOST or event == window.WINDOW_EVENT_ICONIFIED then
 			flush(self)
+		elseif event == window.WINDOW_EVENT_RESIZED and can_fullscreen
+			and defos.is_fullscreen() ~= self.settings.fullscreen then
+			self.settings = settings.with(self.settings, "fullscreen", defos.is_fullscreen())
+			markDirty(self)
 		end
 	end)
+	if html5 then
+		self.settings = settings.with(self.settings, "fullscreen", false)
+	end
 	applyDisplay(self)
 	go.set("/background#mesh", "top", theme.vec(theme.background.top))
 	go.set("/background#mesh", "bottom", theme.vec(theme.background.bottom))

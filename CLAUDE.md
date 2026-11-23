@@ -152,13 +152,15 @@ clients): touch-first is detected in the browser (`pointer: coarse`). Tray piece
 selected (tap again, or the turn keys) and keep that orientation (`play` session `held`); while
 dragging, a second finger's tap beside the dragging finger spins the piece, above or below tips
 it. The chapter arrows flank the chapter dots, clear of the back key.
-Next: play-test the three packs.
 
 Next, in order:
-1. Patterns (draw the pattern channel), Spares, mixed packs (colour + count walls, sum walls),
+1. On the phone (rebuild the web build first): tray turning, second-finger turn directions (is
+   "above tips away" natural?), no accidental second taps during a pinch, no Keys tab.
+2. Play-test Towers, Overhead, Glass, Counting, Parity and Ledger; reorder by feel.
+3. Patterns (draw the pattern channel), Spares, mixed packs (colour + count walls, sum walls),
    an authoring guide (carve, solve, the "rule matters" check).
-2. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
-3. Web/mobile builds and touch testing.
+4. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
+5. Native iOS/Android builds (iOS signing needs an Apple developer account), if wanted.
 Deferred until play-testing of glass, count and parity asks for it: ray inspection
 (`docs/mechanics.md`; pick a wall cell, light its ray's cubes, label the fold) and the wall
 mark that opens a wall's rule card.
@@ -166,9 +168,9 @@ Art polish is done for now; motion only if play-testing asks for it.
 
 To judge in play: count/parity wall readability (too many vs too few look alike; is parity's
 ring enough), tooltips, keycap contrast and which cap is which in pairs, the first-time card
-flow and the HUD "?" key (the user's save has seen every card), the Keys tab on mobile web
-(HTML5 always counts as having a keyboard).
+flow and the HUD "?" key (the user's save has seen every card).
 
-Untested or known: the level select's lag (chapter pages now build at most one chapter's thumbnails; judge again); touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
+Untested or known: the level select's lag (chapter pages now build at most one chapter's thumbnails; judge again); twist direction on touch, fullscreen toggle, chapter dots past ~14 packs (they shrink
+on narrow phones to clear the back key), WebGL1 `fwidth`, the
 save on focus loss and quit, key press sinking, stacked glass (blending depends on draw order);
 the editor linter shows stale warnings (e.g. `board_view.present` arity, `.axis` field).

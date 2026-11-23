@@ -1,0 +1,36 @@
+	.canvas-app-progress {
+		position: absolute;
+		background-color: #c9c7c2;
+		height: 6px;
+		margin-top: -6px;
+		width: 100%;
+	}
+
+	.canvas-app-progress-bar {
+		height: 6px;
+		background-color: #ed5445;
+		transition: transform 1s ease;
+		transform-origin: left;
+		transform: scaleX(1.0);
+	}
+
+	.buttons-background {
+		display: none;
+	}
+
+	body {
+		background-color: #bfbeba;
+	}
+
+	.canvas-app-container {
+		background: linear-gradient(180deg, #d9d7d4 0%, #bfbeba 100%);
+	}
+
+	.canvas-app-canvas {
+		background-repeat: no-repeat;
+		background-position: center center;
+{{#DEFOLD_SPLASH_IMAGE}}
+		background-size: contain;
+		background-image: url("{{DEFOLD_SPLASH_IMAGE}}");
+{{/DEFOLD_SPLASH_IMAGE}}
+	}
