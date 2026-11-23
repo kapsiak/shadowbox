@@ -64,7 +64,8 @@ local function levelState(saved, catalog, p, l)
 end
 
 -- screen: { w, h, scale, safe, settings }; scroll: pixels scrolled down from the top.
--- Returns { title, banners, nodes, trail, calm, max_scroll, focus }, where focus is the scroll
+-- Returns { title, pages, banners, nodes, trail, calm, max_scroll, focus }, where each chapter
+-- sits on a page { id, x, y, w, h, tilt } (centre, size, degrees) and focus is the scroll
 -- that brings the current level (the next one to play) to the middle of the screen.
 function M.compute(screen, catalog, saved, scroll)
 	local w, h, safe = screen.w, screen.h, screen.safe
@@ -82,13 +83,15 @@ function M.compute(screen, catalog, saved, scroll)
 	local y = h - safe.top - margin - title_size * 0.6 + scroll
 	local layout = {
 		title = { text = "Levels", x = cx, y = y, size = title_size },
-		banners = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
+		pages = {}, banners = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
 	}
 	local focus_y
 	y = y - title_size * 2
 
+	local page_w = math.min(w - margin, cell * columns + 2 * node * (GAP + TURN + 0.2))
 	for p, pack in ipairs(catalog.packs) do
 		local open_pack = progress.isPackOpen(saved, catalog, p)
+		local page_top = y + title_size * 1.1
 		layout.banners[#layout.banners + 1] = {
 			id = pack.id, x = cx, y = y, size = title_size * 0.8, accent = pack.accent,
 			text = pack.title, intro = open_pack and pack.intro or "Locked",
@@ -116,6 +119,11 @@ function M.compute(screen, catalog, saved, scroll)
 			end
 			previous = spec
 		end
+		local page_bottom = previous.y - node * 0.75 - title_size * 0.2
+		layout.pages[#layout.pages + 1] = {
+			id = pack.id, x = cx, y = (page_top + page_bottom) / 2, w = page_w, h = page_top - page_bottom,
+			tilt = p % 2 == 0 and 0.4 or -0.4,
+		}
 		y = previous.y - node * 0.75 - title_size * 1.8
 	end
 	local content_bottom = y - scroll

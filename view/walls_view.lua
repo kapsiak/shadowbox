@@ -12,18 +12,24 @@ local theme = require "view.theme"
 
 local M = {}
 
--- Walls stand further from the board than panels extend past their grids, so panels never
--- meet; the floor sits just under the pieces so they rest on it.
-M.WALL_GAP = 0.34
+-- The panels form an open box: the floor sits just under the pieces so they rest on it and
+-- reaches out to the walls, which stand on it one margin away from the grid.
+local MARGIN = 0.3
+M.WALL_GAP = MARGIN
 M.FLOOR_GAP = 0.02
-local MARGIN = 0.24
 local FADE_RATE = 6
-local CELL_RATE = 14
+-- Cells change at a constant speed (full change per second), so appearing mirrors disappearing.
+local CELL_SPEED = 7
 local PULSE_RATE = 2.2
 local SWITCH = 0.08
 
 local axes_of = { front = 3, side = 1, top = 2 }
 local gaps = { front = M.WALL_GAP, side = M.WALL_GAP, top = M.FLOOR_GAP }
+local margins = {
+	front = { MARGIN, MARGIN, M.FLOOR_GAP, MARGIN },
+	side = { MARGIN, MARGIN, M.FLOOR_GAP, MARGIN },
+	top = { MARGIN, MARGIN, MARGIN, MARGIN },
+}
 local AXIS_NAMES = { "x", "y", "z" }
 
 -- Each wall has a mesh for either side of the board, both facing it: side -1 sits below
@@ -33,8 +39,8 @@ local function sideBuffers(level, name, owned)
 	local w, h = level.size[axes.u], level.size[axes.v]
 	local far = level.size[axis] + gaps[name]
 	local buffers = {
-		[-1] = resources.createBuffer(mesh_gen.panel(axes.u, axes.v, axis, w, h, -gaps[name], MARGIN, 1)),
-		[1] = resources.createBuffer(mesh_gen.panel(axes.u, axes.v, axis, w, h, far, MARGIN, -1)),
+		[-1] = resources.createBuffer(mesh_gen.panel(axes.u, axes.v, axis, w, h, -gaps[name], margins[name], 1)),
+		[1] = resources.createBuffer(mesh_gen.panel(axes.u, axes.v, axis, w, h, far, margins[name], -1)),
 	}
 	owned[#owned + 1] = buffers[-1]
 	owned[#owned + 1] = buffers[1]
@@ -73,7 +79,9 @@ function M.create(level, factory_url)
 		for _, slot in ipairs(slots) do
 			go.set(mesh, slot[1], layers[slot[2]].texture)
 		end
-		go.set(mesh, "dims", vmath.vector4(w, h, MARGIN, 0))
+		local m = margins[name]
+		go.set(mesh, "dims", vmath.vector4(w, h, 0, 0))
+		go.set(mesh, "margins", vmath.vector4(m[1], m[2], m[3], m[4]))
 		walls.list[name] = {
 			name = name, axis = axis, go = id, mesh = mesh, buffers = buffers, w = w, h = h, layers = layers,
 			side = -1, goal_side = -1, opacity = 1, pulse = 0, matched = false, glow = 0,
@@ -103,23 +111,24 @@ local function focusGoals(walls, cells)
 	end
 end
 
--- What the displayed pieces cast on the floor: covered columns and those touching it.
+local WHITE = channels.light.identity
+
+-- What the displayed pieces cast on the floor: the light each column lets through and the
+-- columns touching it.
 local function floorShadow(level, poses)
-	local cells, contact = {}, {}
+	local items, contact = {}, {}
 	for id, pose in pairs(poses) do
-		for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
-			if grid.contains(level.size, c) then
-				cells[#cells + 1] = c
-				if c[2] == 0 then
-					contact[c[1] + c[3] * level.size[1] + 1] = true
-				end
+		local cells = boardCells(level, id, pose)
+		items[#items + 1] = { cells = cells, value = level.pieces[id].value }
+		for _, c in ipairs(cells) do
+			if c[2] == 0 then
+				contact[c[1] + c[3] * level.size[1] + 1] = true
 			end
 		end
 	end
-	return { covered = projection.cover(level.size, cells, "top"), contact = contact }
+	local light = projection.project(level.size, "top", { "light" }, items).layers.light
+	return { light = light, contact = contact }
 end
-
-local WHITE = channels.light.identity
 
 -- Writes the colour of `light` into texel i: rgb the glass colour and a = 1, or a = 0 for
 -- darkness (drawn in the panel's ink). White leaves the texel alone, so a cell keeps its
@@ -146,9 +155,10 @@ local function cellGoals(wall, target, comparison, shadow)
 		local base = (i - 1) * 4
 		goal[base + 1] = wanted and wanted[i] ~= WHITE and 1 or 0
 		goal[base + 2] = current and current[i] ~= WHITE and 1 or 0
-		goal[base + 3] = shadow and not comparison and shadow.covered[i] and 1 or 0
+		local cast = shadow and not comparison and shadow.light[i]
+		goal[base + 3] = cast and cast ~= WHITE and 1 or 0
 		goal[base + 4] = shadow and shadow.contact[i] and 1 or 0
-		lightGoal(wall.layers.received.goal, i, current and current[i])
+		lightGoal(wall.layers.received.goal, i, current and current[i] or cast)
 		lightGoal(wall.layers.target.goal, i, wanted and wanted[i])
 	end
 end
@@ -219,13 +229,13 @@ local function stepSide(wall, eye, k)
 	end
 end
 
--- Eases a layer toward its goal and uploads it as bytes when anything moved.
-local function easeLayer(layer, w, h, k)
+-- Moves a layer toward its goal by at most `step` and uploads it as bytes when anything moved.
+local function easeLayer(layer, w, h, step)
 	local now, goal, changed = layer.now, layer.goal, layer.dirty
 	for i = 1, #now do
 		local v, g = now[i], goal[i]
 		if v ~= g then
-			now[i] = math.abs(g - v) < 0.004 and g or motion.approach(v, g, k)
+			now[i] = v < g and math.min(g, v + step) or math.max(g, v - step)
 			changed = true
 		end
 	end
@@ -239,18 +249,18 @@ local function easeLayer(layer, w, h, k)
 	layer.dirty = false
 end
 
-local function stepCells(wall, k)
+local function stepCells(wall, step)
 	for _, layer in pairs(wall.layers) do
-		easeLayer(layer, wall.w, wall.h, k)
+		easeLayer(layer, wall.w, wall.h, step)
 	end
 end
 
 -- Advances fades, cell easing and pulses. eye: unit vector3 from the board toward the camera.
 function M.step(walls, dt, eye)
-	local k_fade, k_cell = motion.blend(FADE_RATE, dt), motion.blend(CELL_RATE, dt)
+	local k_fade = motion.blend(FADE_RATE, dt)
 	for _, wall in pairs(walls.list) do
 		stepSide(wall, eye, k_fade)
-		stepCells(wall, k_cell)
+		stepCells(wall, CELL_SPEED * dt)
 		wall.pulse = math.max(0, wall.pulse - PULSE_RATE * dt)
 		wall.glow = motion.approach(wall.glow, wall.matched and 1 or 0, k_fade)
 		go.set(wall.mesh, "opacity", vmath.vector4(wall.opacity, wall.pulse, wall.glow, 0))

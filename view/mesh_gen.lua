@@ -3,6 +3,7 @@
 --
 -- Each visible face carries:
 --   texcoord0  face-local uv in [0, 1]
+--   tangent    the face's u direction (v is normal x tangent)
 --   edge       per side (u0, u1, v0, v1): 1 = convex outer edge, 0 = seam within the piece
 --   ao         per-corner ambient occlusion from the piece's own cubes, in [0, 1]
 local M = {}
@@ -59,7 +60,7 @@ function M.piece(cells)
 		return present[key(c)] == true
 	end
 
-	local out = { position = {}, normal = {}, texcoord0 = {}, edge = {}, ao = {} }
+	local out = { position = {}, normal = {}, texcoord0 = {}, tangent = {}, edge = {}, ao = {} }
 	for _, c in ipairs(cells) do
 		for _, f in ipairs(faces) do
 			if not has(offset(c, f.n, 1)) then
@@ -87,6 +88,7 @@ function M.piece(cells)
 					push(out.position, v.pos[1], v.pos[2], v.pos[3])
 					push(out.normal, f.n[1], f.n[2], f.n[3])
 					push(out.texcoord0, v.uv[1], v.uv[2])
+					push(out.tangent, f.u[1], f.u[2], f.u[3])
 					push(out.edge, edge[1], edge[2], edge[3], edge[4])
 					push(out.ao, v.ao)
 				end
@@ -99,8 +101,9 @@ end
 
 -- A flat w x h quad on the plane where axis `normal_axis` equals `depth`, facing along
 -- `facing` (1 or -1) on that axis, with uv (0,0) at the low corner along (u_axis, v_axis).
--- `margin` extends the quad beyond the grid; uv outside [0, 1] marks that border region.
-function M.panel(u_axis, v_axis, normal_axis, w, h, depth, margin, facing)
+-- `margins` { u0, u1, v0, v1 } extend the quad beyond each side of the grid; uv outside [0, 1]
+-- marks that border region.
+function M.panel(u_axis, v_axis, normal_axis, w, h, depth, margins, facing)
 	local out = { position = {}, normal = {}, texcoord0 = {} }
 	local n = { 0, 0, 0 }
 	n[normal_axis] = facing
@@ -111,7 +114,7 @@ function M.panel(u_axis, v_axis, normal_axis, w, h, depth, margin, facing)
 		push(out.normal, n[1], n[2], n[3])
 		push(out.texcoord0, u / w, v / h)
 	end
-	local u0, v0, u1, v1 = -margin, -margin, w + margin, h + margin
+	local u0, u1, v0, v1 = -margins[1], w + margins[2], -margins[3], h + margins[4]
 	for _, uv in ipairs({ { u0, v0 }, { u1, v0 }, { u1, v1 }, { u0, v0 }, { u1, v1 }, { u0, v1 } }) do
 		vertex(uv[1], uv[2])
 	end

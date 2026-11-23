@@ -1,7 +1,7 @@
 -- Pass order: background, gui_back (screens drawn beneath 3D), board (panels, cubes, glass),
 -- tray (own camera, fresh depth), gui.
 -- Panels always sit behind the board, so drawing them first lets see-through cubes blend over them.
--- Glass comes last and multiplies what is behind it, so stacked glass mixes in any order.
+-- Glass comes last, blended over everything else.
 local cameras = require "view.cameras"
 local frame = require "render.frame"
 
@@ -25,11 +25,10 @@ local function usePass(pass)
 	return { frustum = pass.frustum }
 end
 
+-- Glass is premultiplied, blended over what lies behind it without writing depth.
 local function drawGlass(predicate, options)
 	render.set_depth_mask(false)
-	render.set_blend_func(graphics.BLEND_FACTOR_DST_COLOR, graphics.BLEND_FACTOR_ZERO)
 	render.draw(predicate, options)
-	render.set_blend_func(graphics.BLEND_FACTOR_ONE, graphics.BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
 	render.set_depth_mask(true)
 end
 

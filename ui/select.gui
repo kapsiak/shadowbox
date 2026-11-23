@@ -7,6 +7,10 @@ fonts {
   name: "body"
   font: "/assets/fonts/body.font"
 }
+fonts {
+  name: "hand"
+  font: "/assets/fonts/hand.font"
+}
 textures {
   name: "hud"
   texture: "/ui/hud.atlas"

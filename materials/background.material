@@ -23,3 +23,23 @@ fragment_constants {
     w: 1.0
   }
 }
+fragment_constants {
+  name: "window_light"
+  type: CONSTANT_TYPE_USER
+  value {
+    x: 1.0
+    y: 0.85
+    z: 0.6
+    w: 0.0
+  }
+}
+fragment_constants {
+  name: "clock"
+  type: CONSTANT_TYPE_USER
+  value {
+    x: 0.0
+    y: 1.0
+    z: 0.0
+    w: 0.0
+  }
+}

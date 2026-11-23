@@ -6,7 +6,7 @@ local models = require "ui.models"
 local theme = require "view.theme"
 
 local ui = theme.ui
-local FACE, CARD, SHADOW = theme.vec(ui.face), theme.vec(ui.card), theme.vec(ui.shadow)
+local FACE, CARD, SHADOW, PRIMARY = theme.vec(ui.face), theme.vec(ui.card), theme.vec(ui.shadow), theme.vec(ui.primary)
 local INK, ACCENT, TRACK = theme.vec(ui.ink), theme.vec(ui.accent), theme.vec(ui.track)
 local DANGER, WHITE, DIM, FADE = theme.vec(ui.danger), theme.vec(ui.white), theme.vec(ui.dim), theme.vec(ui.fade)
 local FONT_SIZE = { title = 64, body = 40 }
@@ -100,8 +100,15 @@ local function enableItem(item, enabled, control)
 	end
 end
 
-local function hideItem(item)
-	enableItem(item, false)
+-- Items are pooled by their position on the sheet, so the node count stays bounded by the
+-- largest sheet; a slot taken by a different item forgets the old one's eased state.
+local function slotFor(self, i, id)
+	local item = self.items[i] or createItem()
+	self.items[i] = item
+	if item.id ~= id then
+		item.id, item.on, item.selected, item.scale = id, nil, nil, 1
+	end
+	return item
 end
 
 local function drawKnob(item, x, y, size, a)
@@ -161,11 +168,11 @@ local function drawItem(item, spec, a)
 	enableItem(item, true, control)
 	item.scale = item.scale + (1 - item.scale) * 0.25
 	local w, h = spec.w * item.scale, spec.h * item.scale
-	local face = spec.primary and ACCENT or FACE
+	local face = spec.primary and PRIMARY or FACE
 	place(item.shadow, spec.x, spec.y - h * 0.05, w * 1.02, h * 1.1, withAlpha(SHADOW, a))
 	place(item.face, spec.x, spec.y, w, h, withAlpha(face, a))
 	drawControl(item, spec, a)
-	local color = spec.primary and WHITE or spec.danger and DANGER or INK
+	local color = spec.danger and DANGER or INK
 	if control == "tabs" then
 		return
 	elseif control then
@@ -215,24 +222,23 @@ function update(self, dt)
 	local k = 1 - math.exp(-EASE_RATE * dt)
 	self.shown = self.shown + ((layout and 1 or 0) - self.shown) * k
 	self.last = layout or self.last
+	local pressed = {}
 	for _, id in ipairs(models.takePresses("panel")) do
-		if self.items[id] then
-			self.items[id].scale = 0.94
-		end
+		pressed[id] = true
 	end
-	local present = {}
+	local specs = self.last and self.last.items or {}
 	if self.last then
 		drawFrame(self, self.last, self.shown, w, h)
-		for _, spec in ipairs(self.last.items) do
-			self.items[spec.id] = self.items[spec.id] or createItem()
-			drawItem(self.items[spec.id], spec, self.shown)
-			present[spec.id] = true
-		end
 	end
-	for id, item in pairs(self.items) do
-		if not present[id] then
-			hideItem(item)
+	for i, spec in ipairs(specs) do
+		local item = slotFor(self, i, spec.id)
+		if pressed[spec.id] then
+			item.scale = 0.94
 		end
+		drawItem(item, spec, self.shown)
+	end
+	for i = #specs + 1, #self.items do
+		enableItem(self.items[i], false)
 	end
 	local fade = models.layout("fade") or 0
 	place(self.fade, w / 2, h / 2, w, h, withAlpha(FADE, fade))

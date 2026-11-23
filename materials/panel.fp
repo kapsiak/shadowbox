@@ -17,8 +17,10 @@ uniform mediump sampler2D target;
 
 uniform fs_uniforms
 {
-    // xy: grid size in cells, z: margin around the grid in cells
+    // xy: grid size in cells
     mediump vec4 dims;
+    // The panel's border beyond each side of the grid in cells: u0, u1, v0, v1
+    mediump vec4 margins;
     // x: opacity, y: pulse (1 at the moment a wall is satisfied, fading), z: satisfied glow
     mediump vec4 opacity;
     // the selected piece's colour
@@ -73,19 +75,20 @@ float focusAt(vec2 c)
     return inGrid(c) ? texture(focus, (c + 0.5) / dims.xy).r : 0.0;
 }
 
-// Distance from p (cell-local, centred) to the edge of a region of cells, counting only the
-// sides and corners whose neighbour lies outside it, so neighbouring cells merge seamlessly.
+// Distance from p (cell-local, centred) to the edge of a region of cells, counting each side and
+// corner by how far its neighbour lies outside it (0 to 1), so neighbouring cells merge seamlessly
+// and smoothly as they come and go. Capped at 1, beyond any point in the cell.
 float edgeDistance(vec2 p, vec4 side_out, vec4 corner_out)
 {
-    float d = 8.0;
-    d = min(d, mix(8.0, p.x + 0.5, side_out.x));
-    d = min(d, mix(8.0, 0.5 - p.x, side_out.y));
-    d = min(d, mix(8.0, p.y + 0.5, side_out.z));
-    d = min(d, mix(8.0, 0.5 - p.y, side_out.w));
+    float d = 1.0;
+    d = min(d, mix(1.0, p.x + 0.5, side_out.x));
+    d = min(d, mix(1.0, 0.5 - p.x, side_out.y));
+    d = min(d, mix(1.0, p.y + 0.5, side_out.z));
+    d = min(d, mix(1.0, 0.5 - p.y, side_out.w));
     for (int i = 0; i < 4; i++)
     {
         float out_i = i == 0 ? corner_out.x : i == 1 ? corner_out.y : i == 2 ? corner_out.z : corner_out.w;
-        d = min(d, mix(8.0, length(p - CORNERS[i] * 0.5), out_i));
+        d = min(d, mix(1.0, length(p - CORNERS[i] * 0.5), out_i));
     }
     return d;
 }
@@ -96,8 +99,10 @@ void main()
     vec2 cell = floor(grid);
     vec2 local = fract(grid) - 0.5;
 
-    // Panel body: a rounded slab filling the quad. Panels seen from behind fade out.
-    float body_d = roundedBox(grid - dims.xy * 0.5, dims.xy * 0.5 + dims.z, 0.32);
+    // Panel body: a square slab filling the quad. Panels seen from behind fade out.
+    vec2 body_lo = -margins.xz;
+    vec2 body_hi = dims.xy + margins.yw;
+    float body_d = roundedBox(grid - (body_lo + body_hi) * 0.5, (body_hi - body_lo) * 0.5, 0.02);
     float body_mask = (1.0 - smoothstep(-0.02, 0.02, body_d)) * smoothstep(0.0, 0.2, var_facing) * opacity.x;
     if (body_mask <= 0.0)
     {
@@ -119,10 +124,10 @@ void main()
         float side_differs = step(0.05, distance(wantAt(cell + SIDES[i]), want_key));
         float corner_differs = step(0.05, distance(wantAt(cell + CORNERS[i]), want_key));
         t_side[i] = max(step(n.r, 0.5), side_differs);
-        g_side[i] = step(n.g, 0.5);
+        g_side[i] = 1.0 - n.g;
         f_side[i] = step(focusAt(cell + SIDES[i]), 0.5);
         t_corner[i] = max(step(c.r, 0.5), corner_differs);
-        g_corner[i] = step(c.g, 0.5);
+        g_corner[i] = 1.0 - c.g;
         f_corner[i] = step(focusAt(cell + CORNERS[i]), 0.5);
     }
 
@@ -139,9 +144,9 @@ void main()
     float grid_line = inside ? 1.0 - smoothstep(0.0, 1.5 * aa, min(to_line.x, to_line.y)) : 0.0;
     color = mix(color, pencil.rgb, 0.08 * grid_line);
 
-    // Floor: the live shadow while unjudged and soft contact under pieces.
+    // Floor: the live shadow (or glass light) while unjudged and soft contact under pieces.
     vec4 soft_t = texture(soft, var_uv);
-    color = mix(color, shadow.rgb, 0.45 * soft_t.b);
+    color = mix(color, received_color, 0.45 * soft_t.b);
     color *= 1.0 - 0.12 * soft_t.a;
 
     // Missing target cells keep a faint wash of the wanted light.
@@ -176,7 +181,11 @@ void main()
     color = mix(color, accent.rgb * 0.85, f_line);
 
     // Wooden frame around the paper.
-    float frame_band = smoothstep(-0.07 - aa, -0.07, body_d);
+    // Only sides with a border carry it, so a wall's foot meets the floor's frame cleanly.
+    vec4 to_edge = vec4(grid.x - body_lo.x, body_hi.x - grid.x, grid.y - body_lo.y, body_hi.y - grid.y);
+    vec4 framed = mix(vec4(8.0), to_edge, step(0.1, margins));
+    float frame_d = min(min(framed.x, framed.y), min(framed.z, framed.w));
+    float frame_band = 1.0 - smoothstep(0.07, 0.07 + aa, frame_d);
     vec3 wood = frame.rgb * (0.9 + 0.12 * noise(grid * vec2(1.5, 18.0)));
     color = mix(color, wood, frame_band);
 

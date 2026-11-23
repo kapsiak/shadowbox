@@ -1,5 +1,5 @@
--- Draws the level select layout published in ui/models ("select"): chapter banners, the trail,
--- and under each level a plinth, its label and a badge. Drawn beneath the 3D thumbnails
+-- Draws the level select layout published in ui/models ("select"): a paper page per chapter
+-- with its banner and trail, and under each level a plinth, its label and a badge. Drawn beneath the 3D thumbnails
 -- (gui_back material), which sit on the plinths.
 local models = require "ui.models"
 
@@ -10,18 +10,26 @@ local SOFT_INK = theme.vec(theme.ui.soft_ink)
 local SHADOW = theme.vec(theme.ui.shadow)
 local SOLVED = theme.vec(theme.ui.solved)
 local LOCKED = theme.vec(theme.ui.cell_off)
-local FONT_SIZE = { title = 64, body = 40 }
+local FONT_SIZE = { title = 64, body = 40, hand = 56 }
 local FADE_RATE = 10
+local PAPER = theme.vec(theme.ui.card)
+local SLICE = vmath.vector4(30, 30, 30, 30)
+local INK_MIX = 0.35
 local PULSE_RATE = 2.4
 
+-- A chapter's accent, drawn as coloured pencil: mixed toward the ink so it sits on paper.
 local function accentOf(name)
-	return theme.vec(theme.palettes.default[name] or theme.ui.accent)
+	local c = theme.vec(theme.palettes.default[name] or theme.ui.accent)
+	return c + (INK - c) * INK_MIX
 end
 
-local function box(image)
+local function box(image, sliced)
 	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(node, "hud")
 	gui.play_flipbook(node, image)
+	if sliced then
+		gui.set_slice9(node, SLICE)
+	end
 	return node
 end
 
@@ -74,21 +82,21 @@ local function drawNode(n, spec, alpha, pulse)
 	local s, x, y = spec.size, spec.x, spec.y
 	local accent = accentOf(spec.accent)
 	local locked = spec.state == "locked"
-	place(n.plinth, x, y - s * 0.3, s * 0.95, s * 0.3, withAlpha(locked and LOCKED or SHADOW, alpha))
+	place(n.plinth, x, y - s * 0.3, s * 0.95, s * 0.3, withAlpha(locked and LOCKED or SHADOW, alpha * (locked and 1 or 0.4)))
 	gui.set_enabled(n.halo, spec.current)
 	if spec.current then
 		local grow = 1 + 0.08 * pulse
-		place(n.halo, x, y - s * 0.3, s * 1.25 * grow, s * 0.42 * grow, withAlpha(accent, alpha * (0.55 - 0.2 * pulse)))
+		place(n.halo, x, y - s * 0.3, s * 1.25 * grow, s * 0.42 * grow, withAlpha(accent, alpha * (0.35 - 0.12 * pulse)))
 	end
 	gui.set_enabled(n.lock, locked)
 	if locked then
 		place(n.lock, x, y - s * 0.05, s * 0.32, s * 0.32, withAlpha(SOFT_INK, alpha * 0.6))
 	end
 	local label = locked and tostring(spec.index) or ("%d  %s"):format(spec.index, spec.name)
-	setText(n.label, "body", label, x, y - s * 0.62, s * 0.13, withAlpha(locked and SOFT_INK or INK, alpha * (locked and 0.6 or 1)))
+	setText(n.label, "hand", label, x, y - s * 0.62, s * 0.17, withAlpha(locked and SOFT_INK or INK, alpha * (locked and 0.6 or 1)))
 	gui.set_enabled(n.check, spec.state == "solved")
 	if spec.state == "solved" then
-		local label_w = textWidth("body", label, s * 0.13)
+		local label_w = textWidth("hand", label, s * 0.17)
 		place(n.check, x + label_w / 2 + s * 0.12, y - s * 0.62, s * 0.14, s * 0.14, withAlpha(SOLVED, alpha))
 	end
 end
@@ -98,9 +106,28 @@ local function banner(self, id)
 	return self.banners[id]
 end
 
+-- Pages go beneath everything else on the screen (the title is the first node created).
+local function page(self, id)
+	if not self.pages[id] then
+		local p = { shadow = box("button_shadow", true), sheet = box("button", true) }
+		gui.move_below(p.shadow, self.title)
+		gui.move_below(p.sheet, self.title)
+		self.pages[id] = p
+	end
+	return self.pages[id]
+end
+
+local function drawPage(p, spec, alpha)
+	local rotation = vmath.vector3(0, 0, spec.tilt)
+	place(p.shadow, spec.x, spec.y - spec.h * 0.01 - 6, spec.w * 1.01, spec.h * 1.01 + 8, withAlpha(SHADOW, alpha))
+	place(p.sheet, spec.x, spec.y, spec.w, spec.h, withAlpha(PAPER, alpha))
+	gui.set_rotation(p.shadow, rotation)
+	gui.set_rotation(p.sheet, rotation)
+end
+
 local function levelNode(self, id)
 	self.nodes[id] = self.nodes[id] or {
-		halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check"),
+		halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("hand"), check = box("check"),
 	}
 	return self.nodes[id]
 end
@@ -117,7 +144,7 @@ local function drawTrail(self, trail, alpha)
 end
 
 function init(self)
-	self.nodes, self.banners, self.dots, self.shown, self.time = {}, {}, {}, 0, 0
+	self.nodes, self.banners, self.dots, self.pages, self.shown, self.time = {}, {}, {}, {}, 0, 0
 	self.title = text("title")
 end
 
@@ -133,6 +160,9 @@ function update(self, dt)
 	local alpha = self.shown
 	local title = last.title
 	setText(self.title, "title", title.text, title.x, title.y, title.size, withAlpha(INK, alpha))
+	for _, spec in ipairs(last.pages) do
+		drawPage(page(self, spec.id), spec, alpha)
+	end
 	drawTrail(self, last.trail, alpha)
 	for _, spec in ipairs(last.banners) do
 		drawBanner(banner(self, spec.id), spec, alpha)

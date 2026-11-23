@@ -100,12 +100,12 @@ fragment_constants {
   }
 }
 fragment_constants {
-  name: "edges"
+  name: "finish"
   type: CONSTANT_TYPE_USER
   value {
-    x: 0.1
-    y: 0.78
-    z: 0.1
+    x: 0.07
+    y: 0.35
+    z: 0.04
     w: 0.0
   }
 }

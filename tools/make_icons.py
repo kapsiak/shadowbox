@@ -170,15 +170,40 @@ def dot():
     save(img, "dot")
 
 
+def paper_outline(inset, radius, wobble, seed):
+    """Points around a rounded square (96-unit space), pushed in and out a little like a torn edge."""
+    import random
+    rng = random.Random(seed)
+    lo, hi = inset, SIZE - inset
+    pts = []
+    corners = [(hi - radius, lo + radius, -90), (hi - radius, hi - radius, 0), (lo + radius, hi - radius, 90), (lo + radius, lo + radius, 180)]
+    for cx, cy, start in corners:
+        for i in range(12):
+            a = math.radians(start + 90 * i / 11)
+            pts.append((cx + radius * math.cos(a), cy + radius * math.sin(a)))
+    out, offset = [], 0.0
+    for i, (x, y) in enumerate(pts):
+        nx, ny = pts[(i + 1) % len(pts)]
+        offset = offset * 0.6 + rng.uniform(-wobble, wobble)
+        dx, dy = ny - y, x - nx
+        length = math.hypot(dx, dy) or 1
+        out.append((s(x + dx / length * offset), s(y + dy / length * offset)))
+    return out
+
+
 def button():
-    img = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((s(6), s(6), s(90), s(90)), radius=s(26), fill=WHITE)
+    """A paper card: off-white with a faintly darker, slightly deckled edge. 9-sliced at 30."""
+    mask = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    ImageDraw.Draw(mask).polygon(paper_outline(5, 8, 0.7, 7), fill=255)
+    soft = mask.filter(ImageFilter.GaussianBlur(s(2.5)))
+    shade = soft.point(lambda v: int(232 + 23 * min(1.0, max(0.0, (v / 255 - 0.5) * 2))))
+    img = Image.merge("RGBA", (shade, shade, shade, mask))
     save(img, "button")
-    shadow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    sd.rounded_rectangle((10, 12, 86, 90), radius=24, fill=(0, 0, 0, 255))
-    shadow.filter(ImageFilter.GaussianBlur(5)).save(OUT / "button_shadow.png")
+    shadow = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    ImageDraw.Draw(shadow).polygon(paper_outline(9, 10, 0.0, 7), fill=255)
+    shadow = shadow.resize((SIZE, SIZE), Image.LANCZOS).filter(ImageFilter.GaussianBlur(4))
+    black = Image.new("L", (SIZE, SIZE), 0)
+    Image.merge("RGBA", (black, black, black, shadow)).save(OUT / "button_shadow.png")
 
 
 def main():

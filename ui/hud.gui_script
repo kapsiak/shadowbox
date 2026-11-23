@@ -5,7 +5,7 @@ local models = require "ui.models"
 local theme = require "view.theme"
 
 local FACE = theme.vec(theme.ui.face)
-local TEXT = { title = theme.vec(theme.ui.ink), body = theme.vec(theme.ui.soft_ink) }
+local TEXT = { title = theme.vec(theme.ui.ink), body = theme.vec(theme.ui.ink) }
 local FONT_SIZE = { title = 64, body = 40 }
 local ICON = theme.vec(theme.ui.icon)
 local SHADOW = theme.vec(theme.ui.shadow)

@@ -8,7 +8,7 @@ local function uniquePath(kind, ext)
 	return ("/runtime/%s_%d.%s"):format(kind, counter, ext)
 end
 
-local stream_widths = { position = 3, normal = 3, texcoord0 = 2, edge = 4, ao = 1 }
+local stream_widths = { position = 3, normal = 3, texcoord0 = 2, tangent = 3, edge = 4, ao = 1 }
 
 -- streams: { count = n, <stream name> = flat number array, ... }
 function M.createBuffer(streams)

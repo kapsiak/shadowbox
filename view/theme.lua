@@ -39,14 +39,15 @@ M.palettes.default = {
 }
 
 M.light = {
-	sky = { 0.62, 0.64, 0.7 },
-	ground = { 0.42, 0.36, 0.32 },
-	key = { 0.62, 0.54, 0.42 },
+	sky = { 0.7, 0.68, 0.68 },
+	ground = { 0.56, 0.47, 0.4 },
+	key = { 0.6, 0.52, 0.4 },
 	key_dir = { -0.6, -0.6, -0.5 },
 }
 
--- Cube edges, x: highlight along outer edges, y: brightness at the outline, z: darkening along seams.
-M.edges = { 0.04, 0.86, 0.05 }
+-- Lacquered wood: bevel width (in faces), gloss of the clear coat, darkening by the grain, and the
+-- lamplight from the viewer's side (relative to the key light).
+M.finish = { bevel = 0.07, gloss = 0.35, grain = 0.1, fill = 0.35 }
 
 -- Projection panels: paper, the shadow cast on it, the pencil of the target sketch, the frame.
 M.panel = {
@@ -54,23 +55,29 @@ M.panel = {
 	high_contrast = { paper = { 1, 0.99, 0.97 }, shadow = { 0.16, 0.18, 0.26 }, pencil = { 0.08, 0.06, 0.06 }, frame = { 0.5, 0.36, 0.24 } },
 }
 
-M.background = { top = { 0.95, 0.91, 0.84 }, bottom = { 0.8, 0.72, 0.62 } }
-M.tray_fill = { 0.99, 0.96, 0.9, 0.6 }
+-- The workshop wall: plaster from top to bottom of the screen, and the window light on it
+-- (rgb, a: strength).
+M.background = { top = { 0.74, 0.66, 0.57 }, bottom = { 0.5, 0.42, 0.35 }, window_light = { 1.0, 0.86, 0.62, 0.26 } }
+-- The tray is the workbench's oak front edge.
+M.tray_wood = { 0.6, 0.47, 0.35 }
 
+-- The interface is paper and graphite: cards of the screens' paper with ink text, the main
+-- action on paper washed with lamplight amber, shadows cast onto the dim wall.
 M.ui = {
-	face = { 0.99, 0.97, 0.93, 0.95 },
-	card = { 0.98, 0.96, 0.92, 0.97 },
-	shadow = { 0.3, 0.2, 0.1, 0.14 },
-	ink = { 0.27, 0.22, 0.2, 1 },
-	soft_ink = { 0.48, 0.42, 0.38, 1 },
-	icon = { 0.36, 0.3, 0.27, 1 },
-	accent = { 0.78, 0.42, 0.28, 1 },
-	track = { 0.88, 0.84, 0.78, 1 },
-	danger = { 0.8, 0.3, 0.25, 1 },
-	solved = { 0.38, 0.6, 0.42, 1 },
-	cell_off = { 0.88, 0.85, 0.8, 1 },
-	dim = { 0.2, 0.15, 0.1, 0.3 },
-	fade = { 0.95, 0.91, 0.84, 1 },
+	face = { 0.95, 0.91, 0.84, 1 },
+	card = { 0.95, 0.91, 0.84, 1 },
+	primary = { 0.95, 0.8, 0.58, 1 },
+	shadow = { 0.12, 0.08, 0.05, 0.38 },
+	ink = { 0.25, 0.2, 0.18, 1 },
+	soft_ink = { 0.42, 0.36, 0.32, 1 },
+	icon = { 0.3, 0.25, 0.22, 1 },
+	accent = { 0.7, 0.42, 0.29, 1 },
+	track = { 0.84, 0.78, 0.69, 1 },
+	danger = { 0.7, 0.28, 0.22, 1 },
+	solved = { 0.36, 0.5, 0.34, 1 },
+	cell_off = { 0.84, 0.78, 0.69, 1 },
+	dim = { 0.12, 0.08, 0.05, 0.45 },
+	fade = { 0.16, 0.12, 0.09, 1 },
 	white = { 1, 1, 1, 1 },
 }
 
