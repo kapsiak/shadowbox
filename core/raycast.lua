@@ -25,9 +25,11 @@ local function clipToBox(size, origin, dir)
 	return t_enter, enter_axis
 end
 
--- Returns the first cell for which isSolid(cell) holds, the normal of the face the ray
--- entered it through (nil if the ray starts inside that cell), and the ray distance.
-function M.firstHit(size, origin, dir, isSolid)
+-- Visits the cells the ray crosses inside the box, in order: visit(cell, normal, t), where
+-- normal is the face the ray entered through (nil if it starts inside the cell). Stops when
+-- visit returns a value, which is returned; otherwise returns nil and the exit (last cell,
+-- inward normal of the face the ray left through).
+local function traverse(size, origin, dir, visit)
 	local t, enter_axis = clipToBox(size, origin, dir)
 	if not t then
 		return nil
@@ -50,8 +52,9 @@ function M.firstHit(size, origin, dir, isSolid)
 		normal[enter_axis] = -step[enter_axis]
 	end
 	while true do
-		if isSolid(cell) then
-			return { cell[1], cell[2], cell[3] }, normal, t
+		local result = visit({ cell[1], cell[2], cell[3] }, normal, t)
+		if result then
+			return result
 		end
 		local a = 1
 		if t_max[2] < t_max[a] then
@@ -60,15 +63,43 @@ function M.firstHit(size, origin, dir, isSolid)
 		if t_max[3] < t_max[a] then
 			a = 3
 		end
-		t = t_max[a]
-		cell[a] = cell[a] + step[a]
-		if cell[a] < 0 or cell[a] >= size[a] then
-			return nil
-		end
-		t_max[a] = t_max[a] + t_delta[a]
 		normal = { 0, 0, 0 }
 		normal[a] = -step[a]
+		if cell[a] + step[a] < 0 or cell[a] + step[a] >= size[a] then
+			return nil, { cell = { cell[1], cell[2], cell[3] }, normal = normal }
+		end
+		t = t_max[a]
+		cell[a] = cell[a] + step[a]
+		t_max[a] = t_max[a] + t_delta[a]
 	end
+end
+
+-- Returns the first cell for which isSolid(cell) holds, the normal of the face the ray
+-- entered it through (nil if the ray starts inside that cell), and the ray distance.
+function M.firstHit(size, origin, dir, isSolid)
+	local hit = traverse(size, origin, dir, function(cell, normal, t)
+		if isSolid(cell) then
+			return { cell = cell, normal = normal, t = t }
+		end
+	end)
+	if hit then
+		return hit.cell, hit.normal, hit.t
+	end
+end
+
+-- The surface the ray meets first, as { cell, normal }: the free cell in front of it and the
+-- normal pointing out of it. A surface is a solid cell's face or the inside of the box's
+-- boundary (floor or wall) where the ray leaves. Nil when the ray misses the box.
+function M.surface(size, origin, dir, isSolid)
+	local last
+	local hit, exit = traverse(size, origin, dir, function(cell, normal)
+		if isSolid(cell) then
+			return normal and { cell = last or { cell[1] + normal[1], cell[2] + normal[2], cell[3] + normal[3] },
+				normal = normal }
+		end
+		last = cell
+	end)
+	return hit or exit
 end
 
 return M

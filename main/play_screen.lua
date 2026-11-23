@@ -193,7 +193,7 @@ function M.apply(screen, intent, dt)
 		audio.cue("pick")
 		screen.hovered = nil
 		screen.pointer = { x = intent.x, y = intent.y }
-		play.grab(s, intent.piece, intent.cell, toTable(orbit.eyeDirection(screen.rig)))
+		play.grab(s, intent.piece, intent.cell)
 	elseif kind == "drag" then
 		screen.pointer = { x = intent.x, y = intent.y }
 		play.dragTo(s, cameras.ray("board", intent.x, intent.y, screen.info.w, screen.info.h))

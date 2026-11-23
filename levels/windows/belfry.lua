@@ -1,0 +1,21 @@
+return {
+	name = "Belfry",
+	pieces = { A = "coral", B = "sky", C = "mint", D = "butter", E = "lilac", F = "peach" },
+	layers = {
+		{ "B.A",
+		  "...",
+		  "DDD" },
+		{ "B.A",
+		  "...",
+		  "D.D" },
+		{ "BBA",
+		  "B.C",
+		  "CCC" },
+		{ "B.A",
+		  "...",
+		  "E.C" },
+		{ "FFF",
+		  "FEF",
+		  "EEC" },
+	},
+}

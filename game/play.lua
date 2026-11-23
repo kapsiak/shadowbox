@@ -9,11 +9,32 @@ local raycast = require "core.raycast"
 
 local M = {}
 
--- Tried in order when a turned piece does not fit where it is.
-local KICKS = {
-	{ 0, 0, 0 }, { 0, 1, 0 }, { 1, 0, 0 }, { -1, 0, 0 },
-	{ 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0 }, { 0, 2, 0 },
-}
+-- Tried in order when a turned piece does not fit where it is: every offset within reach,
+-- nearest first, then up before level before down.
+local KICKS = {}
+local KICK_REACH = 3
+for x = -KICK_REACH, KICK_REACH do
+	for y = -KICK_REACH, KICK_REACH do
+		for z = -KICK_REACH, KICK_REACH do
+			if math.abs(x) + math.abs(y) + math.abs(z) <= KICK_REACH then
+				KICKS[#KICKS + 1] = { x, y, z }
+			end
+		end
+	end
+end
+table.sort(KICKS, function(a, b)
+	local da, db = math.abs(a[1]) + math.abs(a[2]) + math.abs(a[3]), math.abs(b[1]) + math.abs(b[2]) + math.abs(b[3])
+	if da ~= db then
+		return da < db
+	end
+	if a[2] ~= b[2] then
+		return a[2] > b[2]
+	end
+	if a[1] ~= b[1] then
+		return a[1] < b[1]
+	end
+	return a[3] < b[3]
+end)
 
 -- The state holding those of `poses` ({ [piece_id] = pose }) that fit the level; the rest
 -- are left in the tray.
@@ -77,17 +98,6 @@ function M.dominantAxis(v)
 	return axis, v[axis] < 0 and -1 or 1
 end
 
--- Pieces slide on the floor plane unless the camera looks nearly level, in which case
--- they move on the vertical plane that faces it.
-local LEVEL_VIEW = math.sin(math.rad(20))
-
-local function dragAxis(eye_dir)
-	if math.abs(eye_dir[2]) >= LEVEL_VIEW then
-		return 2
-	end
-	return (M.dominantAxis({ eye_dir[1], 0, eye_dir[3] }))
-end
-
 local function extent(cells, axis)
 	local lo, hi = math.huge, -math.huge
 	for _, c in ipairs(cells) do
@@ -97,26 +107,22 @@ local function extent(cells, axis)
 end
 
 -- Starts dragging `piece`. hit_cell is the board cell grabbed (nil when taken from the tray).
--- eye_dir points from the board toward the camera and picks the drag axis: the axis the
--- pointer cannot express. On the floor that is height, from a level view it is depth.
 --
--- While dragging, the grabbed cube sits at `offset` from the piece's anchor and follows the
--- pointer cell. Along the drag axis the piece settles by itself: on the floor it drops onto
--- whatever lies below, otherwise it moves to the nearest free layer. Nudging along the drag
--- axis turns settling off and holds the piece at an exact `layer`.
-function M.grab(s, piece, hit_cell, eye_dir)
+-- While dragging, the piece rests against the surface under the pointer (a face of a piece,
+-- the floor or a wall): the grabbed cube, at `offset` from the anchor, lines up with the
+-- pointer and the piece's near side touches the surface. If that pose overlaps or leaves the
+-- board, the nearest legal one wins. Nudges add a `shift`. Before the pointer moves, a placed
+-- piece turns about the grabbed cube (`pivot`). The preview is always legal: with no legal
+-- pose near it keeps the last one, and off the board that pose is marked refused.
+function M.grab(s, piece, hit_cell)
 	local from = M.current(s).poses[piece]
-	local drag = { piece = piece, from = from, axis = dragAxis(eye_dir), settle = true }
+	local drag = { piece = piece, from = from, orient = orient.identity, offset = { 0, 0, 0 },
+		shift = { 0, 0, 0 }, axis = 2 }
 	if from and hit_cell then
 		drag.orient = from.orient
 		drag.offset = { hit_cell[1] - from.cell[1], hit_cell[2] - from.cell[2], hit_cell[3] - from.cell[3] }
-		drag.layer = hit_cell[drag.axis]
-		drag.pointer = hit_cell
+		drag.pivot = hit_cell
 		drag.candidate = { pose = from, ok = true }
-	else
-		drag.orient = orient.identity
-		drag.offset = { 0, 0, 0 }
-		drag.layer = math.floor(s.level.size[drag.axis] / 2)
 	end
 	s.drag = drag
 	s.selected = piece
@@ -128,76 +134,60 @@ local function check(s, d, cell)
 	return { pose = pose, ok = outcome ~= nil, reason = reason }
 end
 
-local function withAxis(cell, axis, value)
-	local c = { cell[1], cell[2], cell[3] }
-	c[axis] = value
-	return c
-end
+-- How far a preview may move sideways from where it is aimed to become legal.
+local SIDEWAYS = 2
 
--- Drops from the top of the board and stops on the first surface below, like stacking blocks.
-local function dropFromAbove(s, d, cell)
-	local lo, hi = extent(s.level.pieces[d.piece].shape.forms[d.orient], 2)
-	local top, bottom = s.level.size[2] - 1 - hi, -lo
-	local resting
-	for y = top, bottom, -1 do
-		local candidate = check(s, d, withAxis(cell, 2, y))
-		if not candidate.ok then
-			break
-		end
-		resting = candidate
-	end
-	return resting or check(s, d, withAxis(cell, 2, bottom))
-end
-
--- The free layer along the drag axis nearest to where the piece is held.
-local function nearestFree(s, d, cell)
-	local held = d.layer - d.offset[d.axis]
-	for k = 0, s.level.size[d.axis] do
-		for _, layer in ipairs(k == 0 and { held } or { held - k, held + k }) do
-			local candidate = check(s, d, withAxis(cell, d.axis, layer))
-			if candidate.ok then
-				return candidate
+-- The legal pose nearest `base`: each step out along the surface normal or sideways costs
+-- one, and at equal cost stepping out wins. Nil if none is near.
+local function nearestLegal(s, d, base, normal)
+	local a = M.dominantAxis(normal)
+	local u, w = a % 3 + 1, (a + 1) % 3 + 1
+	local reach = math.max(s.level.size[1], s.level.size[2], s.level.size[3])
+	for cost = 0, reach + SIDEWAYS do
+		for r = 0, math.min(cost, SIDEWAYS) do
+			local k = cost - r
+			for du = -r, r do
+				local rest = r - math.abs(du)
+				for _, dw in ipairs(rest == 0 and { 0 } or { -rest, rest }) do
+					local cell = { base[1] + normal[1] * k, base[2] + normal[2] * k, base[3] + normal[3] * k }
+					cell[u], cell[w] = cell[u] + du, cell[w] + dw
+					local candidate = check(s, d, cell)
+					if candidate.ok then
+						return candidate
+					end
+				end
 			end
 		end
 	end
-	return check(s, d, withAxis(cell, d.axis, held))
 end
 
-local function updateCandidate(s, d)
-	if not d.pointer then
-		return
-	end
+-- Where the piece is aimed before it is made legal, for showing a refused turn.
+local function aimed(s, d)
+	local surface = d.surface
 	local cell = {}
-	for a = 1, 3 do
-		cell[a] = d.pointer[a] - d.offset[a]
+	for b = 1, 3 do
+		cell[b] = (surface and surface.cell[b] or d.pivot[b]) - d.offset[b] + d.shift[b]
 	end
-	if not d.settle then
-		d.candidate = check(s, d, withAxis(cell, d.axis, d.layer - d.offset[d.axis]))
-	elseif d.axis == 2 then
-		d.candidate = dropFromAbove(s, d, cell)
-	else
-		d.candidate = nearestFree(s, d, cell)
+	if surface then
+		local lo, hi = extent(s.level.pieces[d.piece].shape.forms[d.orient], d.axis)
+		cell[d.axis] = surface.cell[d.axis] - (surface.normal[d.axis] > 0 and lo or hi) + d.shift[d.axis]
 	end
+	return cell
 end
 
--- The board column under a pointer ray, looking over the tops of other pieces: a top face
--- gives its own column, a side face the column in front of it, and empty space the floor.
-local function columnUnder(s, d, origin, dir)
-	local size = s.level.size
-	local occupied = grid.occupancy(s.level, M.current(s).poses, d.piece)
-	local cell, normal = raycast.firstHit(size, origin, dir, function(c)
-		return occupied[grid.index(size, c)] ~= nil
-	end)
-	if cell and normal and normal[2] == 0 then
-		return { cell[1] + normal[1], 0, cell[3] + normal[3] }
-	elseif cell then
-		return { cell[1], 0, cell[3] }
+local function aim(s, d)
+	return nearestLegal(s, d, aimed(s, d), d.surface and d.surface.normal or { 0, 1, 0 })
+end
+
+-- The last legal preview is kept while nothing legal is near, unless the piece has turned
+-- since: then it shows where it is aimed, refused, so the turn is never hidden.
+local function updateCandidate(s, d)
+	if d.off then
+		d.candidate = d.candidate and { pose = d.candidate.pose, ok = false }
+	elseif d.surface or d.pivot then
+		local kept = d.candidate and d.candidate.ok and d.candidate.pose.orient == d.orient and d.candidate
+		d.candidate = aim(s, d) or kept or { pose = { cell = aimed(s, d), orient = d.orient }, ok = false }
 	end
-	if dir[2] >= 0 then
-		return nil
-	end
-	local t = -origin[2] / dir[2]
-	return { math.floor(origin[1] + dir[1] * t), 0, math.floor(origin[3] + dir[3] * t) }
 end
 
 -- Moves the drag preview to follow a world-space pointer ray.
@@ -206,19 +196,16 @@ function M.dragTo(s, origin, dir)
 	if not d then
 		return
 	end
-	local pointer
-	if d.axis == 2 then
-		pointer = columnUnder(s, d, origin, dir)
-	elseif math.abs(dir[d.axis]) > 1e-6 then
-		local t = (d.layer + 0.5 - origin[d.axis]) / dir[d.axis]
-		pointer = t >= 0 and withAxis({
-			math.floor(origin[1] + dir[1] * t), math.floor(origin[2] + dir[2] * t), math.floor(origin[3] + dir[3] * t),
-		}, d.axis, d.layer) or nil
+	local size = s.level.size
+	local occupied = grid.occupancy(s.level, M.current(s).poses, d.piece)
+	d.surface = raycast.surface(size, origin, dir, function(c)
+		return occupied[grid.index(size, c)] ~= nil
+	end)
+	d.off = d.surface == nil
+	if d.surface then
+		d.axis = M.dominantAxis(d.surface.normal)
 	end
-	if pointer then
-		d.pointer = pointer
-		updateCandidate(s, d)
-	end
+	updateCandidate(s, d)
 end
 
 -- Ends the drag: into the tray removes the piece, otherwise a legal preview is committed.
@@ -268,13 +255,7 @@ end
 function M.nudge(s, axis, delta)
 	local d = s.drag
 	if d then
-		if axis == d.axis then
-			local held = d.candidate and d.candidate.pose.cell[axis] + d.offset[axis] or d.layer
-			d.layer = held + delta
-			d.settle = false
-		else
-			d.offset[axis] = d.offset[axis] - delta
-		end
+		d.shift[axis] = d.shift[axis] + delta
 		updateCandidate(s, d)
 		return true
 	end
