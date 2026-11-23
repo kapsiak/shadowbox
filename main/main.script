@@ -12,7 +12,7 @@
 --   gesture(screen, g, intents), apply(screen, intent, dt) -> request or nil,
 --   present(screen, dt, info), exit(screen)
 -- Requests: { to = "menu" | "select" | "continue" | "next" | "play", pack, index },
---           { setting = key, value = v }, { reset_progress = true }
+--           { setting = key, value = v }, { reset_progress = true }, { seen = card id }
 local catalog_loader = require "main.catalog"
 local storage = require "main.storage"
 local menu_screen = require "main.menu_screen"
@@ -29,6 +29,8 @@ local models = require "ui.models"
 local audio = require "view.audio"
 local theme = require "view.theme"
 local frame = require "render.frame"
+local cameras = require "view.cameras"
+local controls = require "input.controls"
 
 local DRAG_THRESHOLD = 0.012
 local FADE_OUT, FADE_IN = 0.2, 0.3
@@ -72,10 +74,12 @@ local function screenInfo(self)
 	return {
 		w = math.max(w, 1), h = math.max(h, 1), scale = window.get_display_scale() * self.settings.ui_scale,
 		can_fullscreen = defos ~= nil and not mobile,
+		has_keyboard = not mobile,
 		safe = { left = area.inset_left, right = area.inset_right, top = area.inset_top, bottom = area.inset_bottom },
 		settings = self.settings,
 		title = sys.get_config_string("project.title", ""),
 		can_continue = self.last ~= nil,
+		seen = self.saved.seen,
 	}
 end
 
@@ -94,7 +98,8 @@ local function openLevel(self, pack_index, level_index)
 	markDirty(self)
 	local pack = self.catalog.packs[pack_index]
 	local key = pack.keys[level_index]
-	switchTo(self, play_screen.enter(pack, level_index, self.pool, self.factories, self.boards[key], self.sessions[key]))
+	switchTo(self, play_screen.enter(pack, level_index, self.pool, self.factories, self.boards[key], self.sessions[key],
+		self.rules, self.saved.seen))
 	self.sessions[key] = self.screen.session
 end
 
@@ -113,7 +118,7 @@ end
 local function changeScreen(self, request)
 	local to = request.to
 	if to == "menu" then
-		switchTo(self, menu_screen.enter(self.showcase, self.pool))
+		switchTo(self, menu_screen.enter(self.showcase, self.pool, self.rules))
 	elseif to == "play" then
 		openLevel(self, request.pack, request.index)
 	elseif to == "next" or to == "continue" then
@@ -133,9 +138,10 @@ local function changeScreen(self, request)
 	end
 end
 
--- Applies the settings that act on the engine and window rather than on a screen.
+-- Applies the settings that act on the engine, the window and input rather than on a screen.
 local function applyDisplay(self)
 	local prefs = self.settings
+	self.keymap = controls.keymap(controls.changed(prefs.bindings))
 	sys.set_vsync_swap_interval(prefs.frame_rate == 0 and 1 or 0)
 	sys.set_update_frequency(prefs.frame_rate)
 	frame.scale = settings.renderScale(prefs.quality)
@@ -151,6 +157,9 @@ local function handle(self, request)
 		self.settings = settings.with(self.settings, request.setting, request.value)
 		markDirty(self)
 		applyDisplay(self)
+	elseif request.seen then
+		progress.markSeen(self.saved, request.seen)
+		markDirty(self)
 	elseif request.reset_progress then
 		self.saved = progress.new()
 		self.last = nil
@@ -235,6 +244,7 @@ function init(self)
 	self.pool = board_pool.new(self.factories)
 	self.catalog = assert(catalog_loader.load())
 	self.showcase = assert(catalog_loader.loadShowcase())
+	self.rules = assert(catalog_loader.loadRules())
 	local data = save_data.decode(storage.load(), self.catalog)
 	self.saved = data.progress
 	self.settings = data.settings
@@ -255,7 +265,7 @@ function init(self)
 	go.set("/tray_backdrop#mesh", "fill", theme.vec(tray.color))
 	go.set("/tray_backdrop#mesh", "lip", theme.vec(tray.lip))
 	go.set("/tray_backdrop#mesh", "corner", vmath.vector4(tray.chamfer, 0, 0, 0))
-	switchTo(self, menu_screen.enter(self.showcase, self.pool))
+	switchTo(self, menu_screen.enter(self.showcase, self.pool, self.rules))
 	audio.startMusic()
 	local info = screenInfo(self)
 	self.screen.module.layout(self.screen, info)
@@ -281,6 +291,9 @@ function update(self, dt)
 	info = screenInfo(self)
 	self.screen.module.layout(self.screen, info)
 	self.screen.module.present(self.screen, dt, info)
+	if self.fade then
+		cameras.clear("card")
+	end
 	go.set("/background#mesh", "aspect", vmath.vector4(info.w / info.h, 0, 0, 0))
 	audio.flush(self.settings)
 end
@@ -290,7 +303,7 @@ function final(self)
 end
 
 function on_input(self, action_id, action)
-	local raw = actions.read(action_id, action)
+	local raw = actions.read(action_id, action, self.keymap)
 	if raw then
 		self.raw_input[#self.raw_input + 1] = raw
 	end

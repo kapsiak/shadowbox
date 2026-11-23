@@ -3,6 +3,7 @@
 --
 -- Commands:  { kind = "place", piece = id, pose = pose }  |  { kind = "remove", piece = id }
 -- Outcome:   { changes = { { piece = id, pose = pose_or_nil }, ... } }
+local hot = require "core.hot"
 local shape = require "core.shape"
 local grid = require "core.grid"
 local projection = require "core.projection"
@@ -55,4 +56,4 @@ function M.evaluate(level, state)
 	return { views = views, solved = solved }
 end
 
-return M
+return hot(..., M)

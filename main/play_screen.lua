@@ -1,5 +1,6 @@
 -- The play screen: one level, its views, the HUD, and the input that drives them.
 -- Implements the screen contract used by main.script (see there).
+local hot = require "core.hot"
 local play = require "game.play"
 local interpret = require "input.interpret"
 local board_view = require "view.board_view"
@@ -13,10 +14,29 @@ local hit = require "ui.hit"
 local models = require "ui.models"
 local sheets = require "main.sheets"
 local audio = require "view.audio"
+local card_scene = require "view.card_scene"
+local lessons = require "game.lessons"
+local controls = require "input.controls"
 
 local M = {}
 
 local TRAY_BACKDROP = "/tray_backdrop#mesh"
+-- A button's tooltip shows once the pointer has rested on it this long (desktop only: touch
+-- does not hover), until it leaves or presses.
+local TIP_DELAY = 0.45
+
+-- The tooltip for the button under the pointer: its action and first key.
+local function tipFor(tip, bindings)
+	if not tip or tip.pressed or tip.t < TIP_DELAY then
+		return nil
+	end
+	local action = controls.forButton(tip.id)
+	if not action then
+		return nil
+	end
+	local keys = controls.keysOf(controls.changed(bindings), action.id)
+	return { id = tip.id, text = keys[1] and action.label .. "   " .. controls.keyLabel(keys[1]) or action.label }
+end
 
 local function toTable(v)
 	return { v.x, v.y, v.z }
@@ -24,11 +44,12 @@ end
 
 -- pool: the board pool (view/board_pool); factories: { tray_piece, glass_tray_piece } urls;
 -- saved: the board as last left, or nil; session: this level's session from earlier in this
--- run, kept for its undo history, or nil.
-function M.enter(pack, index, pool, factories, saved, session)
+-- run, kept for its undo history, or nil; rules: the rule cards (catalog.loadRules); seen: the
+-- card ids already seen. Cards the level uses and the player has not seen open first.
+function M.enter(pack, index, pool, factories, saved, session, rules, seen)
 	local lvl = pack.levels[index]
 	local slot = board_pool.acquire(pool, lvl)
-	return {
+	local screen = {
 		module = M, pack = pack, index = index, key = pack.keys[index],
 		session = session and play.resume(session) or play.new(lvl, saved), solved = false, hovered = nil, pointer = nil, sheets = {},
 		interpreter = interpret.new(1),
@@ -36,10 +57,17 @@ function M.enter(pack, index, pool, factories, saved, session)
 		board = slot.board,
 		tray = tray_view.create(lvl, factories, slot.buffers),
 		rig = orbit.new(board_view.bounds(lvl)),
+		rules = rules, card_scene = card_scene.new(pool),
 	}
+	local unseen = lessons.unseen(seen, lvl)
+	if #unseen > 0 then
+		sheets.showCards(screen, unseen)
+	end
+	return screen
 end
 
 function M.exit(screen)
+	card_scene.release(screen.card_scene)
 	board_pool.release(screen.slot)
 	tray_view.destroy(screen.tray)
 	go.set(TRAY_BACKDROP, "rect", vmath.vector4())
@@ -64,6 +92,7 @@ function M.layout(screen, info)
 		subtitle = ("%s  ·  %d / %d"):format(screen.pack.title, screen.index, #screen.pack.levels),
 		solved = screen.solved,
 		left_handed = info.settings.left_handed,
+		tip = #screen.sheets == 0 and tipFor(screen.tip, info.settings.bindings) or nil,
 	})
 	return screen.hud
 end
@@ -83,6 +112,9 @@ function M.button(screen, ev, intents)
 		end
 		sheets.control(screen, ev, intents)
 	elseif ev.phase == "press" then
+		if screen.tip then
+			screen.tip.pressed = true
+		end
 		models.pressed("hud", ev.id)
 		interpret.button(ev.id, intents)
 	end
@@ -103,10 +135,19 @@ end
 
 function M.gesture(screen, g, intents)
 	if #screen.sheets > 0 then
+		if sheets.key(screen, g, intents, screen.info.settings.bindings) then
+			return
+		end
 		if g.kind == "key" and g.pressed and g.name == "menu" then
-			intents[#intents + 1] = { kind = "sheet", id = "resume" }
+			intents[#intents + 1] = { kind = "sheet", id = sheets.top(screen) == "rule" and "rule_next" or "resume" }
 		end
 		return
+	end
+	if g.kind == "hover" then
+		local id = hit.find(screen.hud.buttons, g.x, g.y)
+		if id ~= (screen.tip and screen.tip.id) then
+			screen.tip = id and { id = id, t = 0 } or nil
+		end
 	end
 	local prefs = screen.info.settings
 	screen.interpreter.screen_height = screen.info.h
@@ -171,9 +212,13 @@ function M.apply(screen, intent, dt)
 		screen.solved = false
 		screen.sheets = {}
 		return nil
-	elseif kind == "sheet" or kind == "setting" or kind == "tab" then
+	elseif kind == "sheet" or kind == "setting" or kind == "tab" or kind == "rebind" then
 		return sheets.apply(screen, intent)
 	elseif applyCamera(screen, intent, dt) then
+		return nil
+	elseif kind == "rules" then
+		sheets.open(screen, "rules")
+		screen.session.drag = nil
 		return nil
 	elseif kind == "menu" then
 		sheets.open(screen, "pause")
@@ -239,6 +284,9 @@ function M.present(screen, dt, info)
 	local s = screen.session
 	local display = play.display(s)
 	cueWalls(screen, display.evaluation)
+	if screen.tip then
+		screen.tip.t = screen.tip.t + dt
+	end
 
 	if display.evaluation.solved ~= screen.solved and not s.drag then
 		screen.solved = display.evaluation.solved
@@ -266,7 +314,9 @@ function M.present(screen, dt, info)
 	go.set(TRAY_BACKDROP, "rect", vmath.vector4(t.x, t.y, t.w, t.h))
 	go.set(TRAY_BACKDROP, "screen", vmath.vector4(w, h, 0, 0))
 	models.publish("hud", layout)
-	models.publish("panel", sheets.layout(screen, info))
+	local sheet = sheets.layout(screen, info)
+	models.publish("panel", sheet)
+	card_scene.present(screen.card_scene, sheets.cardLevel(screen), sheet and sheet.scene, dt, info.settings)
 end
 
-return M
+return hot(..., M)

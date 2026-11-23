@@ -1,4 +1,5 @@
 -- The board volume: bounds, cell indexing, and occupancy derived from poses.
+local hot = require "core.hot"
 local shape = require "core.shape"
 
 local M = {}
@@ -25,4 +26,4 @@ function M.occupancy(level, poses, skip_id)
 	return occupied
 end
 
-return M
+return hot(..., M)

@@ -1,5 +1,6 @@
 -- Parses a level definition (a solved arrangement drawn as ASCII layers) into an
 -- immutable level. Everything after parsing may trust the level's shape.
+local hot = require "core.hot"
 local shape = require "core.shape"
 local projection = require "core.projection"
 local channels = require "core.channels"
@@ -235,4 +236,4 @@ function M.load(source, name)
 	return M.parse(def, name)
 end
 
-return M
+return hot(..., M)

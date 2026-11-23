@@ -1,6 +1,7 @@
--- View and projection matrices for each render pass ("board", "tray"). Written once per frame
+-- View and projection matrices for each render pass ("board", "tray", "card"). Written once per frame
 -- by main.script and read by the render script and picking, so drawing and picking always
 -- agree with the camera that was just placed.
+local hot = require "core.hot"
 local M = {}
 
 local passes = {}
@@ -20,6 +21,11 @@ function M.setScreen(name, w, h, fov)
 	local position = vmath.vector3(w / 2, h / 2, distance)
 	M.set(name, position, vmath.quat(), fov, w / h, distance * 0.5, distance * 1.5)
 	return position
+end
+
+-- Draws the pass into a window rectangle (pixels, origin bottom left) instead of the whole frame.
+function M.setViewport(name, x, y, w, h)
+	passes[name].viewport = { x = math.floor(x), y = math.floor(y), w = math.ceil(w), h = math.ceil(h) }
 end
 
 function M.clear(name)
@@ -42,4 +48,4 @@ function M.ray(name, x, y, w, h)
 	return { a.x, a.y, a.z }, { dir.x, dir.y, dir.z }
 end
 
-return M
+return hot(..., M)

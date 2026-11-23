@@ -70,15 +70,18 @@ local function placeBar(node, x, y, w, h, color)
 	gui.set_scale(node, vmath.vector3(k, k, 1))
 end
 
-local MAX_SEGMENTS = 4
+local MAX_SEGMENTS = 5
 
 
 local function createItem()
 	local item = {
 		shadow = box("key", true), face = box("key", true), label = text("body"),
 		track = bar(), fill = bar(), knob_shadow = bar(), knob = bar(), scale = 1,
-		segments = {},
+		segments = {}, caps = {},
 	}
+	for i = 1, MAX_SEGMENTS do
+		item.caps[i] = { shadow = bar(), face = bar() }
+	end
 	for i = 1, MAX_SEGMENTS do
 		item.segments[i] = text("body")
 	end
@@ -86,16 +89,20 @@ local function createItem()
 end
 
 local function enableItem(item, enabled, control)
-	local segmented = control == "choice" or control == "tabs"
+	local segmented = control == "choice" or control == "tabs" or control == "keys"
+	local tracked = control ~= nil and control ~= "keys"
 	gui.set_enabled(item.shadow, enabled and control ~= "tabs")
 	gui.set_enabled(item.face, enabled and control ~= "tabs")
 	gui.set_enabled(item.label, enabled and control ~= "tabs")
-	gui.set_enabled(item.track, enabled and control ~= nil)
+	gui.set_enabled(item.track, enabled and tracked)
 	gui.set_enabled(item.fill, enabled and control == "slider")
-	gui.set_enabled(item.knob, enabled and control ~= nil)
-	gui.set_enabled(item.knob_shadow, enabled and control ~= nil)
+	gui.set_enabled(item.knob, enabled and tracked)
+	gui.set_enabled(item.knob_shadow, enabled and tracked)
 	for i, node in ipairs(item.segments) do
-		gui.set_enabled(node, enabled and segmented and (item.segment_count or 0) >= i)
+		local shown = enabled and segmented and (item.segment_count or 0) >= i
+		gui.set_enabled(node, shown)
+		gui.set_enabled(item.caps[i].shadow, shown and control == "keys")
+		gui.set_enabled(item.caps[i].face, shown and control == "keys")
 	end
 end
 
@@ -145,9 +152,27 @@ local function drawSegments(item, spec, a)
 	end
 end
 
+-- Keycaps: a small white key per action with its key on it; the one waiting for a key is coral.
+local function drawKeys(item, spec, a)
+	local n = #spec.segments
+	local seg_w = spec.track_w / n
+	local h = spec.h * 0.62
+	for i = 1, n do
+		local x = spec.track_x + seg_w * (i - 0.5)
+		local waiting = spec.waiting == spec.values[i]
+		local cap = item.caps[i]
+		local w = math.min(seg_w * 0.88, h * 2.2)
+		placeBar(cap.shadow, x, spec.y - h * LIFT, w, h, withAlpha(waiting and PRIMARY_SHADOW or SHADOW, a))
+		placeBar(cap.face, x, spec.y, w, h, withAlpha(waiting and PRIMARY or WHITE, a))
+		writeText(item.segments[i], "body", spec.segments[i], x, spec.y + h * 0.02, h * 0.5, withAlpha(waiting and PRIMARY_INK or INK, a))
+	end
+end
+
 local function drawControl(item, spec, a)
 	local h = spec.h
-	if spec.kind == "choice" or spec.kind == "tabs" then
+	if spec.kind == "keys" then
+		drawKeys(item, spec, a)
+	elseif spec.kind == "choice" or spec.kind == "tabs" then
 		drawSegments(item, spec, a)
 	elseif spec.kind == "toggle" then
 		local tw, th = h * 0.95, h * 0.52
@@ -167,7 +192,7 @@ local function drawControl(item, spec, a)
 	end
 end
 
-local controls = { slider = true, toggle = true, choice = true, tabs = true }
+local controls = { slider = true, toggle = true, choice = true, tabs = true, keys = true }
 
 local function drawItem(item, spec, a)
 	local control = controls[spec.kind] and spec.kind or nil
@@ -197,6 +222,8 @@ function init(self)
 	self.card_shadow = box("key", true)
 	self.card = box("key", true)
 	self.title = text("title")
+	self.paragraph = text("body")
+	gui.set_line_break(self.paragraph, true)
 	self.heading = text("title")
 	self.mark = box("mark")
 	self.mark_accent = box("mark_accent")
@@ -219,6 +246,12 @@ local function drawFrame(self, layout, a, w, h)
 	if layout.title then
 		local t = layout.title
 		writeText(self.title, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a))
+	end
+	gui.set_enabled(self.paragraph, layout.text ~= nil)
+	if layout.text then
+		local t = layout.text
+		writeText(self.paragraph, "body", t.text, t.x, t.y, t.size, withAlpha(INK, a))
+		gui.set_size(self.paragraph, vmath.vector3(t.w * FONT_SIZE.body / t.size, 0, 0))
 	end
 	gui.set_enabled(self.heading, layout.heading ~= nil)
 	gui.set_enabled(self.mark, layout.heading ~= nil)

@@ -1,5 +1,6 @@
 -- Evaluates Lua data files (levels, pack manifests) in an empty environment.
 -- Targets Lua 5.1 / LuaJIT, which Defold and the project tools run on.
+local hot = require "core.hot"
 local M = {}
 
 function M.eval(source, name)
@@ -14,4 +15,4 @@ function M.eval(source, name)
 	return value
 end
 
-return M
+return hot(..., M)

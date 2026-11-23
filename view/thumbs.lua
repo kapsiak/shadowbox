@@ -2,6 +2,7 @@
 -- cameras.setScreen). Boards are held from the pool (view/board_pool) only while on screen,
 -- built a few per frame so a full page cascades in rather than stalling, then grow in and
 -- sway gently.
+local hot = require "core.hot"
 local board_view = require "view.board_view"
 local board_pool = require "view.board_pool"
 local rules = require "core.rules"
@@ -76,4 +77,4 @@ function M.release(thumbs)
 	releaseUnless(thumbs, {})
 end
 
-return M
+return hot(..., M)

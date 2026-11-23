@@ -1,6 +1,8 @@
 -- Presents unplaced pieces in a strip along the bottom of the screen, drawn by the
--- tray camera. The tray camera shares the board camera's orientation, so a piece in the
+-- tray camera. Pieces are sized by their bounding sphere (`extent`, its diameter), so they fit
+-- at any camera angle. The tray camera shares the board camera's orientation, so a piece in the
 -- tray looks as it will on the board. Layout is in screen pixels, so picking is a rectangle test.
+local hot = require "core.hot"
 local orient = require "core.orient"
 local piece_look = require "view.piece_look"
 local palette = require "view.palette"
@@ -11,7 +13,7 @@ local M = {}
 local DEPTH = 10
 local CAMERA_POSITION = vmath.vector3(0, -1000, 0)
 local CAMERA_FOV = 0.5
-local SLOT_FILL = 0.62
+local SLOT_FILL = 0.85
 local EASE_RATE = 14
 
 local function boxOf(cells)
@@ -22,7 +24,8 @@ local function boxOf(cells)
 		end
 	end
 	local center = vmath.vector3((lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2, (lo[3] + hi[3]) / 2)
-	return center, math.max(hi[1] - lo[1], hi[2] - lo[2], hi[3] - lo[3]) + 1
+	local diagonal = vmath.vector3(hi[1] - lo[1] + 1, hi[2] - lo[2] + 1, hi[3] - lo[3] + 1)
+	return center, vmath.length(diagonal)
 end
 
 -- The tray scene lives far from the board, seen by its own camera ("tray" in view/cameras).
@@ -137,4 +140,4 @@ function M.destroy(view)
 	end
 end
 
-return M
+return hot(..., M)

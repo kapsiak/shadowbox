@@ -1,4 +1,5 @@
 -- Piece colours from the theme, in the player's chosen palette.
+local hot = require "core.hot"
 local theme = require "view.theme"
 local channels = require "core.channels"
 
@@ -17,4 +18,4 @@ function M.pieceColor(piece, mode)
 	return theme.vec(palette[piece.color] or theme.fallback_piece)
 end
 
-return M
+return hot(..., M)

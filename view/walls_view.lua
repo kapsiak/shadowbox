@@ -1,6 +1,7 @@
 -- The projection panels: front and side walls plus the floor. Walls stand on the far side
 -- of the board from the camera, flipping across with a fade. Each cell's state eases, so
 -- cells grow in and fade out; a wall pulses when it becomes satisfied.
+local hot = require "core.hot"
 local shape = require "core.shape"
 local grid = require "core.grid"
 local projection = require "core.projection"
@@ -43,9 +44,12 @@ local function zeros(n)
 end
 
 
--- Texture slots follow the sampler order in panel.material; `cells` is bound twice (sharp, soft).
-local LAYERS = { "cells", "focus", "received", "target" }
-local slots = { { "texture0", "cells" }, { "texture1", "cells" }, { "texture2", "focus" }, { "texture3", "received" }, { "texture4", "target" } }
+-- Texture slots follow the sampler order in panel.material: slot 0 is the static digit strip
+-- (panel.mesh) and `cells` is bound twice (sharp, soft). `counts` holds numbers, so it snaps.
+local LAYERS = { "cells", "focus", "received", "target", "counts" }
+local SNAP = { counts = true }
+local slots = { { "texture1", "counts" }, { "texture2", "cells" }, { "texture3", "cells" }, { "texture4", "focus" }, { "texture5", "received" }, { "texture6", "target" } }
+local OPERATOR_IDS = { light = 0, count = 1, parity = 2 }
 
 -- The wall objects under `parent`, hidden until bound to a level.
 function M.create(factory_url, parent)
@@ -83,8 +87,10 @@ local function bindWall(wall, level, blank)
 	for _, key in ipairs(LAYERS) do
 		local texture = resources.texture(wall.textures[key], TEXELS, TEXELS, blank)
 		local texels, stream = resources.texels(w, h)
-		wall.layers[key] = { texture = texture, texels = texels, stream = stream, now = zeros(w * h * 4), goal = zeros(w * h * 4), moving = false }
+		wall.layers[key] = { texture = texture, texels = texels, stream = stream, now = zeros(w * h * 4), goal = zeros(w * h * 4), moving = false, snap = SNAP[key] }
 	end
+	wall.operator, wall.cubes_of = level.walls[name] or "light", nil
+	go.set(wall.mesh, "operator", vmath.vector4(OPERATOR_IDS[wall.operator], 0, 0, 0))
 	go.set(wall.mesh, "vertices", wall.buffers[-1])
 	go.set(wall.mesh, "dims", vmath.vector4(w, h, TEXELS, TEXELS))
 	go.set(wall.mesh, "margins", vmath.vector4(m[1], m[2], m[3], m[4]))
@@ -166,21 +172,55 @@ local function lightGoal(layer, i, light)
 	end
 end
 
--- cells, per texel: target, judged coverage, unused, contact, in [0, 1];
--- received and target: the colour of the light received and wanted (see lightGoal).
--- `contact` is given for the floor only.
-local function cellGoals(wall, target, comparison, contact)
-	local layers = wall.layers
-	local wanted = target and target.layers.light
-	local current = comparison and comparison.current.layers.light
+-- Whether a folded value casts onto its cell, per operator.
+local casts = {
+	light = function(v) return v ~= WHITE end,
+	count = function(v) return v > 0 end,
+	parity = function(v) return v == 1 end,
+}
+
+-- Light as the view draws it: the light itself, or darkness wherever another operator casts.
+local function seenLight(operator, v)
+	if operator == "light" or v == nil then
+		return v
+	end
+	return casts[operator](v) and 0 or WHITE
+end
+
+-- cells, per texel: target, judged coverage, wrong (cast but not as wanted), contact, in [0, 1];
+-- received and target: the colour of the light received and wanted (see lightGoal);
+-- counts: the wanted count (count walls) and the cubes on the ray (count and parity walls), in
+-- 255ths. `contact` is given for the floor, `cubes` for walls that count.
+local function cellGoals(wall, target, comparison, contact, cubes)
+	local layers, op = wall.layers, wall.operator
+	local wanted = target and target.layers[op]
+	local current = comparison and comparison.current.layers[op]
+	local cast = casts[op]
 	for i = 1, wall.w * wall.h do
 		local base = (i - 1) * 4
-		put(layers.cells, base + 1, wanted and wanted[i] ~= WHITE and 1 or 0)
-		put(layers.cells, base + 2, current and current[i] ~= WHITE and 1 or 0)
+		local want_cast, cur_cast = wanted and cast(wanted[i]), current and cast(current[i])
+		put(layers.cells, base + 1, want_cast and 1 or 0)
+		put(layers.cells, base + 2, cur_cast and 1 or 0)
+		put(layers.cells, base + 3, cur_cast and (op == "count" and current[i] ~= wanted[i] or not want_cast) and 1 or 0)
 		put(layers.cells, base + 4, contact and contact[i] and 1 or 0)
-		lightGoal(layers.received, i, current and current[i])
-		lightGoal(layers.target, i, wanted and wanted[i])
+		put(layers.counts, base + 1, op == "count" and wanted and wanted[i] / 255 or 0)
+		put(layers.counts, base + 2, cubes and cubes[i] / 255 or 0)
+		lightGoal(layers.received, i, seenLight(op, current and current[i]))
+		lightGoal(layers.target, i, seenLight(op, wanted and wanted[i]))
 	end
+end
+
+-- Cubes on each ray of a wall, for walls that show counts; kept while the poses are the same.
+local function cubeCounts(wall, level, poses)
+	if wall.cubes_of ~= poses then
+		local items = {}
+		for id, pose in pairs(poses) do
+			items[#items + 1] = { cells = boardCells(level, id, pose), value = { count = 1 } }
+		end
+		wall.cubes = projection.project(level.size, wall.name, { "count" }, items).layers.count
+		wall.cubes_of = poses
+	end
+	return wall.cubes
 end
 
 -- display: { poses, evaluation } from game/play. focus: { piece, color } for the selected
@@ -197,7 +237,8 @@ function M.present(walls, display, focus)
 	local contact = floorContact(level, display.poses)
 	for name, wall in pairs(walls.list) do
 		local comparison = display.evaluation.views[name]
-		cellGoals(wall, level.targets[name], comparison, name == "top" and contact or nil)
+		local cubes = wall.operator ~= "light" and cubeCounts(wall, level, display.poses) or nil
+		cellGoals(wall, level.targets[name], comparison, name == "top" and contact or nil, cubes)
 		local matched = comparison ~= nil and comparison.matches
 		if matched and not wall.matched then
 			wall.pulse = 1
@@ -248,6 +289,7 @@ local function easeLayer(layer, w, h, step)
 	if not layer.moving then
 		return
 	end
+	step = layer.snap and 1 or step
 	local now, goal, stream, moving = layer.now, layer.goal, layer.stream, false
 	for i = 1, #now do
 		local v, g = now[i], goal[i]
@@ -281,4 +323,4 @@ function M.step(walls, dt, eye)
 	end
 end
 
-return M
+return hot(..., M)

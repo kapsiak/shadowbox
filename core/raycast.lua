@@ -1,4 +1,5 @@
 -- Voxel ray traversal (Amanatides & Woo) through a grid of `size`.
+local hot = require "core.hot"
 local M = {}
 
 local function clipToBox(size, origin, dir)
@@ -102,4 +103,4 @@ function M.surface(size, origin, dir, isSolid)
 	return hit or exit
 end
 
-return M
+return hot(..., M)

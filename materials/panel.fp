@@ -5,7 +5,11 @@ in mediump float var_facing;
 
 out vec4 out_fragColor;
 
-// Per cell (one texel each): r target, g judged coverage, a contact.
+// Digits 0-9 as a distance field, in slots 0-9 of a 16-slot strip.
+uniform mediump sampler2D digits;
+// Per cell, in 255ths: r the wanted count (count walls), g the cubes on the ray.
+uniform mediump sampler2D counts;
+// Per cell (one texel each): r target, g judged coverage, b wrong (cast but not as wanted), a contact.
 uniform mediump sampler2D cells;
 // The same texture, filtered, for soft contact shadows.
 uniform mediump sampler2D soft;
@@ -23,6 +27,8 @@ uniform fs_uniforms
     mediump vec4 margins;
     // x: opacity, y: pulse (1 at the moment a wall is satisfied, fading), z: satisfied glow
     mediump vec4 opacity;
+    // x: the wall's operator: 0 light, 1 count, 2 parity
+    mediump vec4 operator;
     // the selected piece's colour
     mediump vec4 accent;
     mediump vec4 surface;
@@ -78,6 +84,30 @@ float edgeDistance(vec2 p, vec4 side_out, vec4 corner_out)
         d = min(d, mix(1.0, length(p - CORNERS[i] * 0.5), out_i));
     }
     return d;
+}
+
+// Coverage of digit d drawn in a box of `size` cells centred at p (cell-local); aa is the
+// pixel's size in cells. The field rises by 4 per slot width (8 px of spread in 64 px).
+float digit(vec2 p, float d, float size, float aa)
+{
+    vec2 uv = p / size + 0.5;
+    float in_box = step(0.0, min(uv.x, uv.y)) * step(max(uv.x, uv.y), 1.0);
+    float dist = textureLod(digits, vec2((d + clamp(uv.x, 0.0, 1.0)) / 16.0, uv.y), 0.0).a;
+    float w = 4.0 * aa / size;
+    return in_box * smoothstep(0.5 - w, 0.5 + w, dist);
+}
+
+// Coverage of the number n (0-99) centred in a cell. `flip` mirrors it back when the wall is
+// seen from behind.
+float number(vec2 p, float n, float flip, float aa)
+{
+    p.x *= flip;
+    if (n < 10.0)
+    {
+        return digit(p, n, 0.7, aa);
+    }
+    float size = 0.56;
+    return max(digit(p + vec2(0.15, 0.0), floor(n / 10.0), size, aa), digit(p - vec2(0.15, 0.0), mod(n, 10.0), size, aa));
 }
 
 void main()
@@ -143,10 +173,10 @@ void main()
     float covered = inside ? smoothstep(-aa, aa, g_edge - 0.5 * (1.0 - s.g)) * smoothstep(0.0, 0.2, s.g) : 0.0;
     color = mix(color, received_color, covered);
 
-    // Unwanted coverage is crossed out with surface-coloured hatching.
+    // Wrong coverage is crossed out with surface-coloured hatching.
     float stripe = abs(fract((grid.x + grid.y) * 3.0) - 0.5);
     float hatch = 1.0 - smoothstep(0.12, 0.12 + 3.0 * aa, stripe);
-    color = mix(color, surface.rgb, 0.55 * hatch * covered * max(0.0, s.g - s.r));
+    color = mix(color, surface.rgb, 0.55 * hatch * covered * s.b);
 
     // Target contour: a line inside the region's edge, swallowed by a matching shadow,
     // turning to ink as the wall is satisfied.
@@ -155,7 +185,19 @@ void main()
     float contour = inside ? in_target * (1.0 - smoothstep(line_width, line_width + aa, t_edge)) : 0.0;
     vec3 ink = mix(line.rgb, line.rgb * 0.45, opacity.z);
     vec3 line_color = mix(ink, want_color * 0.8, want_t.a);
-    color = mix(color, line_color, contour * (1.0 - 0.85 * s.g * matches));
+    color = mix(color, line_color, contour * (1.0 - 0.85 * s.g * matches * (1.0 - s.b)));
+
+    vec2 n = inside ? floor(texture(counts, cell_uv).rg * 255.0 + 0.5) : vec2(0.0);
+    // Count walls: the wanted count, in ink on the surface and in the surface's colour on a shadow.
+    vec2 gx = dFdx(grid), gy = dFdy(grid);
+    float flip = gx.x * gy.y - gx.y * gy.x < 0.0 ? -1.0 : 1.0;
+    float digit_ink = operator.x == 1.0 && n.x > 0.0 ? number(local, n.x, flip, aa) * in_target : 0.0;
+    color = mix(color, mix(line.rgb, surface.rgb, covered), digit_ink);
+
+    // Parity walls: a ring where cubes cancel (an even number on the ray).
+    float cancelled = operator.x == 2.0 && n.y > 0.0 && mod(n.y, 2.0) == 0.0 ? 1.0 : 0.0;
+    float ring = 1.0 - smoothstep(0.035, 0.035 + aa, abs(length(local) - 0.26));
+    color = mix(color, line.rgb, 0.6 * ring * cancelled);
 
     // The selected piece's cast: a tint and an outline in its colour.
     float f_own = inside ? focusAt(cell) : 0.0;
@@ -170,6 +212,10 @@ void main()
     vec4 framed = mix(vec4(8.0), to_edge, step(0.1, margins));
     float frame_d = min(min(framed.x, framed.y), min(framed.z, framed.w));
     float frame_band = 1.0 - smoothstep(0.07, 0.07 + aa, frame_d);
+    // Parity walls have a dashed frame.
+    float along = min(framed.x, framed.y) < min(framed.z, framed.w) ? grid.y : grid.x;
+    float dash = abs(fract(along * 3.0) - 0.5);
+    frame_band *= operator.x == 2.0 ? smoothstep(0.2 - 3.0 * aa, 0.2 + 3.0 * aa, dash) : 1.0;
     color = mix(color, frame.rgb, frame_band);
 
     // A satisfied wall's light brightens for a moment.

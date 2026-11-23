@@ -1,5 +1,6 @@
 -- The 24 rotations of a cube, addressed by index. An orientation is a number
 -- in 1..24, so an invalid rotation cannot be expressed.
+local hot = require "core.hot"
 local M = {}
 
 local function mul(a, b)
@@ -68,4 +69,4 @@ function M.turn(n, axis, dir)
 	return turns[n][axis][dir]
 end
 
-return M
+return hot(..., M)

@@ -1,4 +1,7 @@
--- Translates Defold input actions into the raw events input/gestures.lua consumes.
+-- Translates Defold input actions into the raw events input/gestures.lua consumes. Keys arrive
+-- as "key_<name>" (tools/make_bindings.lua); a keymap (input/controls) names their action.
+local hot = require "core.hot"
+local controls = require "input.controls"
 local M = {}
 
 local pointers = { [hash("touch")] = "primary", [hash("touch_alt")] = "secondary" }
@@ -6,18 +9,12 @@ local wheels = { [hash("wheel_up")] = 1, [hash("wheel_down")] = -1 }
 local MULTI_TOUCH = hash("multi_touch")
 
 local keys = {}
-for _, name in ipairs({
-	"view_front", "view_side", "view_top", "view_iso",
-	"orbit_left", "orbit_right", "orbit_up", "orbit_down",
-	"zoom_in", "zoom_out",
-	"turn_left", "turn_right", "tip_away", "tip_toward", "roll_left", "roll_right",
-	"undo", "redo", "remove", "lift", "lower", "menu", "confirm",
-}) do
-	keys[hash(name)] = name
+for _, k in ipairs(controls.keys) do
+	keys[hash("key_" .. k.name)] = k.name
 end
 
--- Returns a raw event, or nil for actions the game does not use.
-function M.read(action_id, action)
+-- Returns a raw event, or nil for actions the game does not use. keymap: { [key] = action }.
+function M.read(action_id, action, keymap)
 	if action_id == nil then
 		return { kind = "hover", x = action.screen_x, y = action.screen_y }
 	end
@@ -41,8 +38,9 @@ function M.read(action_id, action)
 		return { kind = "wheel", amount = wheels[action_id], start = action.pressed }
 	end
 	if keys[action_id] then
-		return { kind = "key", name = keys[action_id], pressed = action.pressed, released = action.released }
+		local key = keys[action_id]
+		return { kind = "key", key = key, name = keymap[key], pressed = action.pressed, released = action.released }
 	end
 end
 
-return M
+return hot(..., M)

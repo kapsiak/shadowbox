@@ -1,4 +1,5 @@
 -- Picking against the board: which piece a world ray hits first.
+local hot = require "core.hot"
 local grid = require "core.grid"
 local raycast = require "core.raycast"
 
@@ -15,4 +16,4 @@ function M.piece(level, state, origin, dir)
 	end
 end
 
-return M
+return hot(..., M)

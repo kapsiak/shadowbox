@@ -1,5 +1,6 @@
 -- Orthographic projections onto a view's (u, v) plane. `project` folds piece values along
 -- each ray, one layer per channel; `cover` is the bare geometry: which cells anything reaches.
+local hot = require "core.hot"
 local channels = require "core.channels"
 
 local M = {}
@@ -63,4 +64,4 @@ function M.compare(target, current)
 	return { target = target, current = current, ok = ok, matches = matches }
 end
 
-return M
+return hot(..., M)

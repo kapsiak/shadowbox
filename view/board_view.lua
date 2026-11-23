@@ -2,6 +2,7 @@
 -- Pieces move on springs, lift while dragged, shake when a move is refused, and hop when the
 -- level is solved. Owns its game objects; rebound to another level in place (see
 -- view/board_pool), it replaces its piece objects and keeps the walls. Never touches game state.
+local hot = require "core.hot"
 local orient = require "core.orient"
 local palette = require "view.palette"
 local motion = require "view.motion"
@@ -190,4 +191,4 @@ function M.bounds(level)
 	return (lo + hi) * 0.5, vmath.length(hi - lo) * 0.5
 end
 
-return M
+return hot(..., M)

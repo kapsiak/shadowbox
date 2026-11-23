@@ -1,6 +1,7 @@
 -- What the player has solved, what is open to them, and what comes next. Pure Lua.
 -- A catalog is { packs = { { id, levels = { level, ... }, keys = { "pack/name", ... } }, ... } };
--- progress is { solved = { [key] = true } }.
+-- progress is { solved = { [key] = true }, seen = { [card id] = true } } (see game/lessons).
+local hot = require "core.hot"
 local M = {}
 
 -- Within a pack the first two levels are open and each later level opens once either of the
@@ -10,16 +11,25 @@ local OPEN_AT_START = 2
 local LOOKBACK = 2
 local PACK_THRESHOLD = 0.5
 
-function M.new(data)
-	local solved = {}
-	for key, value in pairs(data and type(data.solved) == "table" and data.solved or {}) do
-		solved[key] = value == true or nil
+local function trueSet(t)
+	local out = {}
+	for key, value in pairs(type(t) == "table" and t or {}) do
+		out[key] = value == true or nil
 	end
-	return { solved = solved }
+	return out
+end
+
+function M.new(data)
+	data = data or {}
+	return { solved = trueSet(data.solved), seen = trueSet(data.seen) }
 end
 
 function M.data(progress)
-	return { solved = progress.solved }
+	return { solved = progress.solved, seen = progress.seen }
+end
+
+function M.markSeen(progress, card)
+	progress.seen[card] = true
 end
 
 function M.isSolved(progress, key)
@@ -77,4 +87,4 @@ function M.next(progress, catalog, pack_index, level_index)
 	end
 end
 
-return M
+return hot(..., M)

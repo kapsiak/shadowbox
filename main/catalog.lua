@@ -1,7 +1,9 @@
 -- Loads the level packs bundled under /levels (custom_resources): levels/index.lua lists the
--- packs in order, and each pack's pack.lua lists its levels.
+-- packs in order, and each pack's pack.lua lists its levels. levels/rules holds the rule cards.
+local hot = require "core.hot"
 local level = require "core.level"
 local source_data = require "core.source"
+local lessons = require "game.lessons"
 
 local M = {}
 
@@ -41,6 +43,26 @@ local function loadPack(id)
 	return pack
 end
 
+-- The rule cards (game/lessons), each { id, title, text, touch, level } with its scene as a
+-- level; `touch` is the text for touch screens where it differs.
+-- Returns { [id] = card }, or nil and the first error.
+function M.loadRules()
+	local cards = {}
+	for _, id in ipairs(lessons.order) do
+		local path = ("/levels/rules/%s.lua"):format(id)
+		local def, err = evalResource(path)
+		if not def then
+			return nil, err
+		end
+		local lvl, level_err = level.parse(def, path)
+		if not lvl then
+			return nil, level_err
+		end
+		cards[id] = { id = id, title = def.title or id, text = def.text or "", touch = def.touch, level = lvl }
+	end
+	return cards
+end
+
 -- The level shown as a sculpture on the main menu.
 function M.loadShowcase()
 	local path = "/levels/showcase.lua"
@@ -65,4 +87,4 @@ function M.load()
 	return catalog
 end
 
-return M
+return hot(..., M)

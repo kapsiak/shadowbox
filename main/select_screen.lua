@@ -4,6 +4,7 @@
 --
 -- The layout is computed once per screen size and published with the scroll offset, so
 -- scrolling moves one offset rather than rebuilding the page.
+local hot = require "core.hot"
 local select_layout = require "ui.select_layout"
 local hit = require "ui.hit"
 local models = require "ui.models"
@@ -194,4 +195,4 @@ function M.present(screen, dt, info)
 	models.publish("hud", { buttons = { backButton(info) }, labels = {} })
 end
 
-return M
+return hot(..., M)

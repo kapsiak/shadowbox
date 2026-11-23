@@ -1,4 +1,5 @@
 -- How a piece mesh looks: lighting from the theme, and colour and pattern from preferences.
+local hot = require "core.hot"
 local palette = require "view.palette"
 local theme = require "view.theme"
 
@@ -33,4 +34,4 @@ function M.update(look, pieces, level, prefs)
 	return { colors = prefs.colors, patterns = prefs.patterns }
 end
 
-return M
+return hot(..., M)

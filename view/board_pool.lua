@@ -3,6 +3,7 @@
 -- when next acquired. Its buffers and textures are rewritten, never freed (released runtime
 -- resources were not freed by the engine), so resources stop growing once the pool has grown
 -- to the most boards shown at once.
+local hot = require "core.hot"
 local orient = require "core.orient"
 local board_view = require "view.board_view"
 local mesh_gen = require "view.mesh_gen"
@@ -52,4 +53,4 @@ function M.release(slot)
 	board_view.hide(slot.board)
 end
 
-return M
+return hot(..., M)

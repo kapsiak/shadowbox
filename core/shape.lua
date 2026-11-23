@@ -1,6 +1,7 @@
 -- A polycube with all 24 orientations precomputed as offsets from an anchor cube
 -- (the one nearest the centroid). A pose's cell is where the anchor sits, so
 -- turning a piece only changes its orientation and never drifts.
+local hot = require "core.hot"
 local orient = require "core.orient"
 
 local M = {}
@@ -109,4 +110,4 @@ function M.cellsAt(shape, pose)
 	return out
 end
 
-return M
+return hot(..., M)

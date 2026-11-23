@@ -2,6 +2,7 @@
 -- Zoom is relative to the distance that fits the board. `ortho` in [0, 1] blends toward an
 -- orthographic look by narrowing the field of view while backing away (a dolly zoom),
 -- so framing is preserved and the camera stays an ordinary perspective camera.
+local hot = require "core.hot"
 local M = {}
 
 local PITCH_MIN, PITCH_MAX = math.rad(-89.5), math.rad(5)
@@ -97,4 +98,4 @@ function M.xray(rig)
 	return rig.current.ortho
 end
 
-return M
+return hot(..., M)

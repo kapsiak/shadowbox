@@ -1,4 +1,5 @@
 -- Frame-rate independent easing helpers. Values may be numbers or vmath vectors.
+local hot = require "core.hot"
 local M = {}
 
 -- Fraction of the remaining distance to cover this frame when easing at `rate` per second.
@@ -18,4 +19,4 @@ function M.spring(x, v, target, dt, omega, zeta)
 	return x + v * dt, v
 end
 
-return M
+return hot(..., M)

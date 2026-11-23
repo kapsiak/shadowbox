@@ -38,6 +38,9 @@ images {
   image: "/ui/icons/roll_right.png"
 }
 images {
+  image: "/ui/icons/rules.png"
+}
+images {
   image: "/ui/icons/stow.png"
 }
 images {

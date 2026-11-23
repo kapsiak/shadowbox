@@ -2,6 +2,7 @@
 -- sequence number, and loading takes the newest slot that reads back; a write cut short or a
 -- corrupt file costs at most the latest save. The folder name is fixed here rather than taken
 -- from the game's title, so renaming the game keeps saves.
+local hot = require "core.hot"
 local M = {}
 
 local APP_ID = "projection_game"
@@ -53,4 +54,4 @@ function M.save(data)
 	return true
 end
 
-return M
+return hot(..., M)

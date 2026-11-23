@@ -1,6 +1,7 @@
 -- The level select screen: each pack is a chapter, a banner followed by its levels on a trail
 -- that switches back and forth across rows, scrolled vertically. Pure: positions are window
 -- pixels with the origin at the bottom left.
+local hot = require "core.hot"
 local progress = require "game.progress"
 
 local M = {}
@@ -135,4 +136,4 @@ function M.compute(screen, catalog, saved)
 	return layout
 end
 
-return M
+return hot(..., M)

@@ -13,6 +13,7 @@ local SHADOW = theme.vec(theme.ui.shadow)
 local LIFT = theme.ui.lift
 local EASE_RATE = 14
 local PULSE = 0.86
+local KEY_SIZE = 96
 
 local function createButton(id)
 	local shadow = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
@@ -32,6 +33,52 @@ end
 function init(self)
 	self.buttons = {}
 	self.labels = {}
+end
+
+-- The tooltip: a small white key with ink text, raised above the buttons whenever new ones appear.
+local function drawTooltip(self, spec, k)
+	local tip = self.tip
+	if not tip then
+		tip = { shadow = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0)), face = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0)), text = gui.new_text_node(vmath.vector3(), ""), shown = 0 }
+		for _, node in ipairs({ tip.shadow, tip.face }) do
+			gui.set_texture(node, "hud")
+			gui.play_flipbook(node, "key")
+			gui.set_slice9(node, vmath.vector4(30, 30, 30, 30))
+		end
+		gui.set_font(tip.text, "body")
+		gui.set_pivot(tip.text, gui.PIVOT_CENTER)
+		self.tip = tip
+	end
+	if self.raise_tip then
+		for _, node in ipairs({ tip.shadow, tip.face, tip.text }) do
+			gui.move_above(node, nil)
+		end
+		self.raise_tip = false
+	end
+	tip.shown = spec and tip.shown + (1 - tip.shown) * k or 0
+	tip.last = spec or tip.last
+	local t = tip.last
+	for _, node in ipairs({ tip.shadow, tip.face, tip.text }) do
+		gui.set_enabled(node, t ~= nil and tip.shown > 0.01)
+	end
+	if not t then
+		return
+	end
+	local face, shadow, ink = vmath.vector4(FACE), vmath.vector4(SHADOW), vmath.vector4(TEXT.body)
+	face.w, shadow.w, ink.w = tip.shown, tip.shown, tip.shown
+	-- Sized at the key image's height and scaled down, so the chamfered corners stay whole.
+	local scale = t.h / KEY_SIZE
+	for _, part in ipairs({ { tip.shadow, t.y - t.h * LIFT, shadow }, { tip.face, t.y, face } }) do
+		gui.set_screen_position(part[1], vmath.vector3(t.x, part[2], 0))
+		gui.set_size(part[1], vmath.vector3(t.w / scale, KEY_SIZE, 0))
+		gui.set_scale(part[1], vmath.vector3(scale, scale, 1))
+		gui.set_color(part[1], part[3])
+	end
+	gui.set_text(tip.text, t.text)
+	gui.set_screen_position(tip.text, vmath.vector3(t.x, t.y, 0))
+	local s = t.size / FONT_SIZE.body
+	gui.set_scale(tip.text, vmath.vector3(s, s, 1))
+	gui.set_color(tip.text, ink)
 end
 
 local function createLabel(spec)
@@ -107,8 +154,12 @@ function update(self, dt)
 	local covered = (models.layout("fade") or 0) > 0.95
 	local present = {}
 	for _, spec in ipairs(layout.buttons) do
-		local b = self.buttons[spec.id] or createButton(spec.id)
-		self.buttons[spec.id] = b
+		local b = self.buttons[spec.id]
+		if not b then
+			b = createButton(spec.id)
+			self.buttons[spec.id] = b
+			self.raise_tip = true
+		end
 		b.last = spec
 		present[spec.id] = spec
 	end
@@ -118,6 +169,7 @@ function update(self, dt)
 		end
 	end
 	updateLabels(self, layout, k, covered)
+	drawTooltip(self, not covered and layout.tooltip or nil, k)
 	for id, b in pairs(self.buttons) do
 		local spec = present[id]
 		b.shown = (covered and not spec) and 0 or approach(b.shown, spec and 1 or 0, k)

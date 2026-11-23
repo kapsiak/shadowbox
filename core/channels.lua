@@ -3,6 +3,7 @@
 -- never interact: a wall cell holds one value per channel, and drawing them is the view's job.
 -- A wall's operator is light, count or parity; it replaces light on that wall. Count and
 -- parity have no piece property: every cube adds 1.
+local hot = require "core.hot"
 local bit = require "bit"
 
 local M = {}
@@ -42,4 +43,4 @@ M.pattern = {
 	names = { horizontal = 1, vertical = 2, grid = 3 },
 }
 
-return M
+return hot(..., M)

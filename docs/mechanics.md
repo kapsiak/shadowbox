@@ -2,7 +2,10 @@
 
 Design decisions for puzzle mechanics beyond silhouettes. Agreed 2026-11-22. Built: the channel
 fold (`core/channels`, `core/projection`) with light and pattern; glass pieces (multiplying
-filters) and coloured light on walls. Not drawn yet: the pattern channel, coloured floor shadows.
+filters) and coloured light on walls; per-wall operators (2026-11-23): count walls (digits) and
+parity walls (dashed frame, a ring where cubes cancel), each replacing light on its wall. Not
+drawn yet: the pattern channel, coloured floor shadows. Open: sum walls (pieces carrying
+numbers) and several operators on one wall, for mixed and late packs.
 
 ## Model: a wall folds along each ray
 

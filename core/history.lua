@@ -1,4 +1,5 @@
 -- Undo/redo over a list of immutable states.
+local hot = require "core.hot"
 local M = {}
 
 function M.new(state)
@@ -33,4 +34,4 @@ function M.redo(h)
 	h.at = math.min(#h.states, h.at + 1)
 end
 
-return M
+return hot(..., M)

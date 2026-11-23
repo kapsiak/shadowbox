@@ -1,3 +1,3 @@
 return {
-	packs = { "basics", "windows", "towers", "overhead", "glass" },
+	packs = { "counting", "basics", "windows", "towers", "overhead", "glass" },
 }

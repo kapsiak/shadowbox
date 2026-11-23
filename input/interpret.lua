@@ -12,6 +12,7 @@
 --   turn { about, dir }           about = "vertical" | "right" | "toward" (camera-relative)
 --   nudge { along, delta }        along = "vertical" | "drag" (the drag plane's axis)
 --   undo, redo, remove, menu, next
+local hot = require "core.hot"
 local M = {}
 
 local ORBIT_PER_SCREEN = math.pi
@@ -34,13 +35,14 @@ local key_turns = {
 	roll_right = { "toward", -1 },
 }
 local key_nudges = { lift = 1, lower = -1 }
-local key_commands = { undo = "undo", redo = "redo", remove = "remove", menu = "menu", confirm = "next" }
+local key_commands = { undo = "undo", redo = "redo", remove = "remove", menu = "menu", confirm = "next", rules = "rules" }
 
 -- On-screen buttons (ui/hud_layout ids) and the intents they stand for.
 local buttons = {
 	undo = { kind = "undo" },
 	redo = { kind = "redo" },
 	menu = { kind = "menu" },
+	rules = { kind = "rules" },
 	view_front = { kind = "view", name = "front" },
 	view_side = { kind = "view", name = "side" },
 	view_top = { kind = "view", name = "top" },
@@ -150,4 +152,4 @@ function M.gesture(state, g, pick, out)
 	end
 end
 
-return M
+return hot(..., M)

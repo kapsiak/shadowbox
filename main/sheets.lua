@@ -1,9 +1,11 @@
 -- The text panels a screen can show (main menu, pause, settings, confirmations), kept as a
 -- stack on the screen: screen.sheets = { "pause", "settings" }. Turns control events on a
 -- panel into intents, and intents into requests for the app (see main.script).
+local hot = require "core.hot"
 local content = require "ui.sheets"
 local panel_layout = require "ui.panel_layout"
 local hit = require "ui.hit"
+local controls = require "input.controls"
 
 local M = {}
 
@@ -19,10 +21,27 @@ function M.top(screen)
 	return screen.sheets[#screen.sheets]
 end
 
+-- Rule cards wait in screen.cards (ids, the shown one first) with their content in screen.rules
+-- (catalog.loadRules); the "rule" sheet shows the first.
+function M.showCards(screen, ids)
+	screen.cards = { unpack(ids) }
+	M.open(screen, "rule")
+end
+
+-- The scene level of the rule card on top, or nil.
+function M.cardLevel(screen)
+	return M.top(screen) == "rule" and screen.rules[screen.cards[1]].level or nil
+end
+
 local builders = {
-	main_menu = function(info) return content.mainMenu(info.title, info.can_continue) end,
+	main_menu = function(info) return content.mainMenu(info.title, info.can_continue, next(info.seen) ~= nil) end,
+	rule = function(info, screen) return content.rule(screen.rules[screen.cards[1]], #screen.cards > 1, not info.has_keyboard) end,
+	rules = function(info, screen) return content.rules(screen.rules, info.seen) end,
 	pause = function() return content.pause() end,
-	settings = function(info, screen) return content.settings(info.settings, screen.settings_tab or "audio", info) end,
+	settings = function(info, screen)
+		local view = { keys_page = screen.keys_page or "piece", rebinding = screen.rebinding }
+		return content.settings(info.settings, screen.settings_tab or "audio", info, view)
+	end,
 	confirm_reset = function() return content.confirmReset() end,
 	confirm_restart = function() return content.confirmRestart() end,
 }
@@ -58,12 +77,28 @@ function M.control(screen, ev, intents)
 	elseif ev.phase == "press" and item.kind == "choice" then
 		intents[#intents + 1] = { kind = "setting", key = item.id, value = item.values[panel_layout.segmentAt(item, ev.x)] }
 	elseif ev.phase == "press" and item.kind == "tabs" then
-		intents[#intents + 1] = { kind = "tab", value = item.values[panel_layout.segmentAt(item, ev.x)] }
+		intents[#intents + 1] = { kind = "tab", id = item.id, value = item.values[panel_layout.segmentAt(item, ev.x)] }
+	elseif ev.phase == "press" and item.kind == "keys" then
+		intents[#intents + 1] = { kind = "rebind", action = item.values[panel_layout.segmentAt(item, ev.x)] }
 	elseif ev.phase == "press" and item.kind == "toggle" then
 		intents[#intents + 1] = { kind = "setting", key = item.id, value = not item.value }
 	elseif ev.phase == "press" then
 		intents[#intents + 1] = { kind = "sheet", id = item.id }
 	end
+end
+
+-- While an action waits for a key, the next key press binds it (Escape cancels). Returns
+-- whether the key gesture `g` was taken. bindings: the player's (settings.bindings).
+function M.key(screen, g, intents, bindings)
+	if not screen.rebinding or g.kind ~= "key" or not g.pressed then
+		return false
+	end
+	local changed = g.key ~= "escape" and controls.rebind(controls.changed(bindings), screen.rebinding, g.key)
+	if changed then
+		intents[#intents + 1] = { kind = "setting", key = "bindings", value = changed }
+	end
+	screen.rebinding = nil
+	return true
 end
 
 -- Handles the panel intents every screen shares. Returns a request for the app, or nil.
@@ -73,18 +108,37 @@ function M.apply(screen, intent)
 	if intent.kind == "setting" then
 		return { setting = intent.key, value = intent.value }
 	elseif intent.kind == "tab" then
-		screen.settings_tab = intent.value
+		screen[intent.id] = intent.value
+		screen.rebinding = nil
+		return nil
+	elseif intent.kind == "rebind" then
+		screen.rebinding = screen.rebinding ~= intent.action and intent.action or nil
 		return nil
 	end
 	local id = intent.id
-	if id == "settings" then
+	local card = id:match("^rule:(.+)")
+	if card then
+		M.showCards(screen, { card })
+	elseif id == "rule_next" then
+		local seen = table.remove(screen.cards, 1)
+		if #screen.cards == 0 then
+			M.close(screen)
+		end
+		return { seen = seen }
+	elseif id == "rules" then
+		M.open(screen, "rules")
+	elseif id == "settings" then
 		M.open(screen, "settings")
 	elseif id == "reset_progress" then
 		M.open(screen, "confirm_reset")
 	elseif id == "confirm_reset" then
 		M.close(screen)
 		return { reset_progress = true }
+	elseif id == "reset_keys" then
+		screen.rebinding = nil
+		return { setting = "bindings", value = {} }
 	elseif id == "done" or id == "cancel" or id == "resume" then
+		screen.rebinding = nil
 		M.close(screen)
 	elseif id == "levels" then
 		return { to = "select" }
@@ -95,4 +149,4 @@ function M.apply(screen, intent)
 	end
 end
 
-return M
+return hot(..., M)

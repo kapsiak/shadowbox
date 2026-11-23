@@ -7,6 +7,7 @@
 --
 -- The first finger on a touch device arrives both as the primary pointer and as a touch, so
 -- control events come from pointers and from touches other than the first.
+local hot = require "core.hot"
 local M = {}
 
 function M.new()
@@ -71,4 +72,4 @@ function M.route(router, ev, hit, events)
 	return ev
 end
 
-return M
+return hot(..., M)

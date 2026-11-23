@@ -4,17 +4,19 @@
 -- the level has changed since.
 --
 -- In memory: { progress, settings, last = { pack, index } or nil, boards = { [key] = poses } }
--- On disk (version 1): { version, progress, settings, last = key, boards = { [key] = { fingerprint, poses } } }
+-- On disk (version 2): { version, progress, settings, last = key, boards = { [key] = { fingerprint, poses } } }
+local hot = require "core.hot"
 local progress = require "game.progress"
 local settings = require "game.settings"
 local play = require "game.play"
 local shape = require "core.shape"
 local orient = require "core.orient"
 local channels = require "core.channels"
+local lessons = require "game.lessons"
 
 local M = {}
 
-M.VERSION = 1
+M.VERSION = 2
 
 local function levelIndex(catalog)
 	local index = {}
@@ -88,6 +90,22 @@ end
 -- Each migration upgrades data from one version to the next: [v] = function(data, index, catalog).
 local migrations = {}
 
+-- Version 2 adds the rule cards seen; a player has seen those of every level they solved.
+migrations[1] = function(data, index)
+	local saved = type(data.progress) == "table" and data.progress or {}
+	local seen = {}
+	for key, value in pairs(type(saved.solved) == "table" and saved.solved or {}) do
+		if value == true and index[key] then
+			for _, card in ipairs(lessons.uses(index[key].level)) do
+				seen[card] = true
+			end
+		end
+	end
+	saved.seen = seen
+	data.progress = saved
+	return data
+end
+
 function M.encode(app, catalog)
 	local index = levelIndex(catalog)
 	local boards = {}
@@ -132,4 +150,4 @@ function M.decode(data, catalog)
 	}
 end
 
-return M
+return hot(..., M)

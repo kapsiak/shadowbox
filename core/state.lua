@@ -1,5 +1,6 @@
 -- Does: the mutable facts of a game in progress. A state is { poses = { [piece_id] = pose } };
 -- a piece without a pose is in the tray. States are treated as immutable values.
+local hot = require "core.hot"
 local M = {}
 
 function M.new()
@@ -17,4 +18,4 @@ function M.apply(state, outcome)
 	return { poses = poses }
 end
 
-return M
+return hot(..., M)

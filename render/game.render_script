@@ -1,5 +1,6 @@
 -- Pass order: background, gui_back (screens drawn beneath 3D), board (panels, cubes, glass),
--- tray (own camera, fresh depth), gui.
+-- tray (own camera, fresh depth), gui, card (a rule card's scene in its own viewport over the GUI).
+-- The card's board stands far from the play board, so each camera sees only its own.
 -- Panels always sit behind the board, so drawing them first lets see-through cubes blend over them.
 -- Glass comes last, blended over everything else.
 local cameras = require "view.cameras"
@@ -145,4 +146,14 @@ function update(self)
 		blit(self, w, h)
 	end
 	drawGui(w, h, predicates.gui, predicates.debug_text)
+	local card = cameras.get("card")
+	if card and card.viewport then
+		local v = card.viewport
+		render.set_viewport(v.x, v.y, v.w, v.h)
+		render.clear(self.clear_depth)
+		drawBoard(card)
+		render.disable_state(graphics.STATE_CULL_FACE)
+		render.disable_state(graphics.STATE_DEPTH_TEST)
+		render.set_viewport(0, 0, w, h)
+	end
 end

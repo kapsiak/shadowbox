@@ -14,11 +14,19 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - Level carving: `luajit tools/carve.lua -k 3-5 -t 600 -r <seed> sculpture.lua` cuts a drawn
   sculpture into random pieces and prints the best cuts (fewest solutions) as level files.
   `-g cyan,yellow -q 1 -m 2` makes all but one piece glass and keeps cuts with 2+ mixed wall cells.
+- Input bindings: `luajit tools/make_bindings.lua` writes every bindable key in `input/controls`
+  into `input/game.input_binding` (rerun after changing the key list).
+- Wall digits: `python3 tools/make_digits.py` bakes `view/digits.png` (Outfit, distance field).
 - Regenerate icons / sounds: `python3 tools/make_icons.py`, `python3 tools/make_sounds.py`
   (then refresh `ui/hud.atlas` from `ui/icons/*.png`). New or updated fonts: run
   `tools/merge_font_overlaps.py` (needs fonttools and skia-pathops).
 - Run: the Defold editor's HTTP API (`.internal/editor.port` and `.internal/editor.token`):
-  `POST /command/run`, `GET /console`, `POST /command/hot-reload`, `POST /command/fetch-libraries`.
+  `POST /command/run`, `GET /console`, `POST /command/fetch-libraries`.
+- Hot reload: `tools/hot_reload.sh` (makes the editor rescan the disk, then reloads; never compile
+  in between). Modules end with `return hot(..., M)` (`core/hot`) so reloaded code reaches those
+  who required them; modules keeping state in locals (`view/resources`, `view/audio`,
+  `ui/models`, `render/frame`) do not, and need a restart. Values applied once (a resting piece's
+  look, a bound board) show a change only when next applied.
 - Automation Bridge (a debug-only dependency) on the engine port from the run response:
   `/automation-bridge/v2/screenshot`, `input/click|drag|key|wheel` (window pixels, origin top-left).
   Wait ~10 s after run before screenshots; the first frames are blank while data loads.
@@ -27,11 +35,14 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - `main/`: the outer loop (`main.script`, phase order and screen contract documented at the top),
   screens (`menu_screen`, `select_screen`, `play_screen`), `sheets` (panel stack), `catalog`,
   `storage` (two alternating save slots; the newest that loads wins).
-- `game/`: pure session logic: `play` (drag, settle, turn, nudge, undo), `progress`, `settings`,
+- `game/`: pure session logic: `play` (drag, settle, turn, nudge, undo), `progress` (solved
+  levels, rule cards seen), `lessons` (which rule cards a level uses), `settings`,
   `save_data` (versioned save format: migrations, level fingerprints, validation on load).
 - `core/`: pure puzzle model: `level` (ASCII parsing), `shape`, `orient` (24 rotations),
   `grid`, `channels` (per-ray monoids: light, pattern), `projection` (folds channels), `rules`, `state`, `history`, `raycast`.
-- `input/`: `actions` (Defold → raw events), `router` (controls claim input), `gestures`, `interpret`.
+- `input/`: `controls` (every keyboard action, its label, HUD button and default keys; the
+  bindable keys; rebinding), `actions` (Defold → raw events; keys through the player's keymap),
+  `router` (controls claim input), `gestures`, `interpret`.
 - `view/`: `board_view` (pieces), `walls_view` (projection panels), `board_pool` (boards reused
   for the whole run: runtime resources are rewritten in place, never released, since released
   ones were not freed), `tray_view`, `thumbs` (live level thumbnails, built a few per frame), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
@@ -44,14 +55,21 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
   scaled-target blit → GUI.
 - `docs/mechanics.md`: agreed design for mechanics beyond silhouettes (not built yet).
 - `docs/art_direction.md`: the agreed look (geometric) and its clarity rules; check visual, sound and UI work against it.
-- `levels/`: `index.lua` lists packs; each pack has `pack.lua` and level files; `showcase.lua` is the menu sculpture.
+- `levels/`: `index.lua` lists packs; each pack has `pack.lua` and level files; `showcase.lua` is
+  the menu sculpture; `rules/<id>.lua` are the rule cards (title, text, optional `touch` text,
+  and a tiny level as the card's scene), one per id in `game/lessons`.
+- Rule cards: a level's unseen cards open as modal sheets on entry; the Rules list (main menu,
+  pause, HUD "?") reopens any card seen. `view/card_scene` draws the card's level far below the
+  board with its own camera into the card's viewport, after the GUI.
+- Walls: a level may set `walls = { front = "count", side = "parity" }` (default `light`); the
+  operator replaces light on that wall (`core/channels`: count sums cubes, parity XORs them).
 
 ## Conventions
 snake_case variables, camelCase functions, comments only where needed, Lua 5.1/LuaJIT.
 GUI scripts only draw what `ui/models` publishes; input decisions happen in `main` phases.
 Never commit or modify git; the user does that.
 
-## Status (sixth session, paused before Counting & parity)
+## Status (seventh session, paused before ray inspection)
 Done: core model, rendering, camera (ortho snaps), drag by contact placement, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -101,16 +119,37 @@ views. Performance: runtime buffers and textures were never freed by the engine 
 with a fling; `play.display` caches its evaluation; settled wall layers and resting pieces cost
 nothing per frame. Trackpads send the wheel as a held button with repeats; each repeat is a step.
 
+Seventh session (mechanics, teaching, controls). Per-wall operators: count walls (digits from a
+baked Outfit atlas, up to 99, so sum walls with numbered pieces stay possible) and parity walls
+(dashed frame, a ring where an even, non-zero number of cubes cancel); hatching marks any wrong
+covered cell. The solver counts cubes per ray, caps count rays and checks rays no remaining
+piece can reach; all 100 earlier levels profile as before. Parity is loose (Step 18 solutions,
+Bridge 44 under two views) and slow on tall towers (six did not finish in 20 s); count is tight
+(nearly every basics/towers drawing turns unique). Teaching (agreed design in memory
+`teaching-design`): rule cards with live scenes, shown on first use and kept in a Rules list;
+saves upgraded to version 2 (seen cards follow solved levels). Controls: `input/controls` table,
+rebindable keys (Settings > Keys, saved as changes only), hover tooltips on HUD buttons, the
+Playing card worded for touch or desktop. Hot reload works for outside edits (`tools/hot_reload.sh`,
+`core/hot`). Tray pieces are sized by their bounding sphere (they overflowed the tray).
+
+Temporary: `levels/index.lua` starts with a test pack `counting` (`test_count`, `test_parity`) that
+shows Basics as locked; replace it with the real Counting pack.
+
 Next, in order:
-1. Art polish is done for now (fourth session); motion only if play-testing asks for it.
-2. Mechanics prototype (`docs/mechanics.md`): ray inspection on hover, then draw the pattern
-   channel.
+1. Ray inspection (`docs/mechanics.md`): hold or hover a wall cell to light its ray's cubes and
+   label the fold (blocked, colour mix, 1 + 1 = 2, odd); with it, a mark on non-light walls that
+   opens the wall's rule card when tapped.
+2. Counting pack (~20) then Parity pack (~20), carved and profiled; first levels isolate the
+   rule. Parity likely needs small boards or a third view to stay unique. Then Patterns (draw the
+   pattern channel), Spares, mixed packs (colour + count walls, sum walls), an authoring guide.
 3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
-4. Content (in progress): next session starts Counting & parity: sum and XOR channels in
-   `core/channels`, solver pruning for non-idempotent channels (its `allowed` shortcut assumes
-   idempotence), wall drawing (shade or digit, odd/even mark), carve support, then intro packs.
-   Then Patterns (draw the pattern channel), Spares, mixed packs, an authoring guide.
-5. Web/mobile builds and touch testing.
+4. Web/mobile builds and touch testing.
+Art polish is done for now; motion only if play-testing asks for it.
+
+To judge in play: count/parity wall readability (too many vs too few look alike; is parity's
+ring enough), tooltips, keycap contrast and which cap is which in pairs, the first-time card
+flow and the HUD "?" key (the user's save has seen every card), the Keys tab on mobile web
+(HTML5 always counts as having a keyboard).
 
 Untested or known: the level select still feels a little laggy (after the board pool, staggered
 thumbnail builds and the static layout; profile before changing more; chapter pages are the agreed

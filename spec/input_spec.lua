@@ -156,3 +156,27 @@ describe("interpret", function()
 		assert.equal(3, out[1].piece)
 	end)
 end)
+
+describe("controls", function()
+	local controls = require "input.controls"
+
+	it("maps keys to actions, with the player's changes over the defaults", function()
+		local map = controls.keymap({ turn_left = { "j" } })
+		assert.equal("turn_left", map.j)
+		assert.is_nil(map.q)
+		assert.equal("remove", map.delete)
+		assert.equal("menu", map.escape)
+	end)
+
+	it("moves a key to the action it is bound to, keeping only changes", function()
+		local b = controls.rebind({}, "undo", "q")
+		assert.same({ undo = { "q" }, turn_left = {} }, b)
+		assert.same({}, controls.rebind(b, "turn_left", "q") and controls.changed(controls.rebind(controls.rebind(b, "turn_left", "q"), "undo", "z")))
+		assert.is_nil(controls.rebind({}, "menu", "m"))
+		assert.is_nil(controls.rebind({}, "undo", "escape"))
+	end)
+
+	it("drops unknown actions and keys from saved bindings", function()
+		assert.same({ undo = { "x" } }, controls.changed({ undo = { "x", "nope" }, jump = { "j" }, redo = { "y" } }))
+	end)
+end)

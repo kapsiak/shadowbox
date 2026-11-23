@@ -6,6 +6,7 @@
 --   tangent    the face's u direction (v is normal x tangent)
 --   edge       per side (u0, u1, v0, v1): 1 = convex outer edge, 0 = seam within the piece
 --   ao         per-corner ambient occlusion from the piece's own cubes, in [0, 1]
+local hot = require "core.hot"
 local M = {}
 
 local faces = {
@@ -122,4 +123,4 @@ function M.panel(u_axis, v_axis, normal_axis, w, h, depth, margins, facing)
 	return out
 end
 
-return M
+return hot(..., M)

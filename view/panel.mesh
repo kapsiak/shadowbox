@@ -1,5 +1,6 @@
 material: "/materials/panel.material"
 vertices: "/view/placeholder.buffer"
+textures: "/view/digits.png"
 primitive_type: PRIMITIVE_TRIANGLES
 position_stream: "position"
 normal_stream: "normal"

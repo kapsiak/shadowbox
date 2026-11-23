@@ -43,6 +43,18 @@ describe("save data", function()
 		assert.equal(1, count)
 	end)
 
+	it("upgrades a version 1 save: the cards of solved levels count as seen", function()
+		local back = save_data.decode({ version = 1, progress = { solved = { ["p/a"] = true } } }, catalog)
+		assert.same({ controls = true, shadows = true }, back.progress.seen)
+	end)
+
+	it("keeps changed key bindings", function()
+		local controls = require "input.controls"
+		local prefs = settings.with(settings.new(), "bindings", controls.rebind({}, "turn_left", "j"))
+		local back = save_data.decode(save_data.encode({ progress = progress.new(), settings = prefs, boards = {} }, catalog), catalog)
+		assert.equal("turn_left", controls.keymap(controls.changed(back.settings.bindings)).j)
+	end)
+
 	it("survives garbage", function()
 		local empty = save_data.decode({ version = "x", progress = 4, settings = "y", boards = { 1 }, last = {} }, catalog)
 		assert.is_nil(empty.last)

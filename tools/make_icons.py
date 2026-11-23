@@ -226,6 +226,16 @@ def mark():
     accent.resize((w, h), Image.LANCZOS).save(OUT / "mark_accent.png")
 
 
+def rules():
+    """A question mark in the interface face, for the Rules list."""
+    from PIL import ImageFont
+    img, d = canvas()
+    font = ImageFont.truetype(str(OUT.parent.parent / "assets" / "fonts" / "Outfit-Bold.ttf"), s(78))
+    x0, y0, x1, y1 = d.textbbox((0, 0), "?", font=font)
+    d.text(((s(SIZE) - (x1 - x0)) / 2 - x0, (s(SIZE) - (y1 - y0)) / 2 - y0), "?", font=font, fill=WHITE)
+    save(img, "rules")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     mark()
@@ -243,6 +253,7 @@ def main():
     straight_arrow("lift", "up")
     straight_arrow("lower", "down")
     stow()
+    rules()
     next_arrow()
     back_arrow()
     check()

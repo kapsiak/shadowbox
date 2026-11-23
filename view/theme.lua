@@ -1,6 +1,7 @@
 -- The game's look as data (docs/art_direction.md): piece palettes, lighting, panels, background
 -- and interface colours. Everything visual reads from here.
 -- Colours are { r, g, b } or { r, g, b, a } in [0, 1].
+local hot = require "core.hot"
 local M = {}
 
 -- Pieces are named by colour in level files; each palette maps every name to a colour.
@@ -83,4 +84,4 @@ function M.vec(c)
 	return vmath.vector4(c[1], c[2], c[3], c[4] or 1)
 end
 
-return M
+return hot(..., M)

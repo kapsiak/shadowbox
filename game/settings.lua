@@ -1,5 +1,7 @@
 -- Player preferences. Pure Lua: plain values with defaults, sanitized when loaded.
--- Sliders have ranges, choices have a fixed list of values, everything else is a toggle.
+-- Sliders have ranges, choices have a fixed list of values, `bindings` is a table of the key
+-- bindings a player changed (input/controls cleans it), everything else is a toggle.
+local hot = require "core.hot"
 local M = {}
 
 M.defaults = {
@@ -16,6 +18,7 @@ M.defaults = {
 	fullscreen = false,
 	quality = "high",
 	frame_rate = 60,
+	bindings = {},
 }
 
 local ranges = { sound = { 0, 1 }, music = { 0, 1 }, sensitivity = { 0.4, 2 } }
@@ -81,4 +84,4 @@ function M.renderScale(quality)
 	return ({ low = 0.5, balanced = 0.75, high = 1 })[quality] or 1
 end
 
-return M
+return hot(..., M)

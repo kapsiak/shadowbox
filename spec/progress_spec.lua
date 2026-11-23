@@ -38,3 +38,19 @@ describe("progress", function()
 		assert.is_nil(progress.next(p, catalog, 2, 2))
 	end)
 end)
+
+describe("lessons", function()
+	local level = require "core.level"
+	local lessons = require "game.lessons"
+
+	it("lists the cards a level relies on, in teaching order", function()
+		local lvl = assert(level.parse({
+			views = { "front", "side", "top" },
+			walls = { side = "count" },
+			pieces = { A = { glass = "cyan" }, B = "slate" },
+			layers = { { "AB" } },
+		}))
+		assert.same({ "controls", "shadows", "floor", "glass", "count" }, lessons.uses(lvl))
+		assert.same({ "floor", "glass", "count" }, lessons.unseen({ controls = true, shadows = true }, lvl))
+	end)
+end)

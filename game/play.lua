@@ -1,5 +1,6 @@
 -- A play session: what the player is doing to a level. Pure Lua.
 -- Committed facts live in the history; a drag is a preview that commits only on drop.
+local hot = require "core.hot"
 local rules = require "core.rules"
 local state = require "core.state"
 local history = require "core.history"
@@ -331,4 +332,4 @@ function M.display(s)
 	return display
 end
 
-return M
+return hot(..., M)

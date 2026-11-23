@@ -1,4 +1,5 @@
 -- Hit testing for laid-out elements: { x, y } centres with either `size` (square) or `w`/`h`.
+local hot = require "core.hot"
 local M = {}
 
 -- The id of the first enabled element containing the point, or nil.
@@ -11,4 +12,4 @@ function M.find(elements, x, y)
 	end
 end
 
-return M
+return hot(..., M)
