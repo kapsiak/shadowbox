@@ -5,6 +5,8 @@ local M = {}
 
 local ROW_DP = 54
 local WIDTH_DP = 380
+-- The heading's mark (twice as wide as tall) and the gap after it, in ems of the heading.
+local MARK_EM, MARK_GAP = 2, 0.35
 -- The fraction of the width the side column takes, leaving the rest to the scene.
 M.SIDE = 0.4
 
@@ -28,8 +30,9 @@ function M.compute(screen, sheet)
 	local content_h = rows * row + (rows - 1) * gap + title_h
 	local pad = sheet.modal and row * 0.5 or 0
 
-	-- A side heading fits its column, at about 0.55 em per character.
-	local heading_size = side and math.min(row * 1.3, width / (0.55 * #(sheet.heading or "x"))) or row
+	-- A side heading and its mark fit the column, at about 0.55 em per character.
+	local heading_em = 0.55 * #(sheet.heading or "x") + MARK_EM + MARK_GAP
+	local heading_size = side and math.min(row * 1.3, width / heading_em) or row
 	local top
 	if sheet.modal then
 		top = h / 2 + content_h / 2
@@ -46,11 +49,14 @@ function M.compute(screen, sheet)
 		layout.title = { text = sheet.title, x = cx, y = top - title_h * 0.45, size = row * 0.5 }
 	end
 	if sheet.heading then
-		if side then
-			layout.heading = { text = sheet.heading, x = cx - width / 2, y = top + heading_size * 1.4, size = heading_size, align = "left" }
-		else
-			layout.heading = { text = sheet.heading, x = w / 2, y = h - screen.safe.top - row * 1.6, size = heading_size }
-		end
+		local size = heading_size
+		local left = side and cx - width / 2 or w / 2 - heading_em * size / 2
+		local y = side and top + size * 1.4 or h - screen.safe.top - row * 1.6
+		local mark_h = size * MARK_EM / 2
+		layout.heading = {
+			text = sheet.heading, x = left + size * (MARK_EM + MARK_GAP), y = y, size = size,
+			mark = { x = left + mark_h, y = y + size * 0.02, w = mark_h * 2, h = mark_h },
+		}
 	end
 	local y = top - title_h - row / 2
 	local bottom = top - content_h + row / 2

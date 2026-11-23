@@ -1,6 +1,7 @@
 # Art direction: geometric
 
-Chosen 2026-11-22 after trying three looks side by side (all still switchable, see Variants).
+Chosen 2026-11-22 after trying three looks side by side (the others, `workshop` and `gallery`,
+were removed and remain in git history before the fourth session).
 Every visual, sound and interface decision is checked against this page.
 
 ## The feel
@@ -30,7 +31,7 @@ warm room shared the yellow and orange pieces' hues.
 
 - Screens: crisp white with a graphite shadow and a light grey frame; the floor and the two walls
   meet as an open box.
-- Pieces: glossy moulded plastic in saturated toy colours (`palettes.default` of the variant),
+- Pieces: glossy moulded plastic in saturated toy colours (`palettes.default` in `view/theme.lua`),
   rounded bevels, one body per piece. Glass: frosted, a deep version of its light's colour.
 
 ## Room
@@ -46,24 +47,23 @@ behind the board. Nothing in the room moves or competes with the board.
 - The tray: a flat, chamfered slab on a lip.
 - Main menu: on wide screens the wordmark and keys form a left column, the turning showcase
   board stands on the right.
-- Type: Outfit (OFL), Bold for titles and Medium for everything else.
+- Controls: tracks are chamfered bars; toggle knobs and the selected segment are small white
+  keys on a lip; slider knobs are coral keys (white would vanish on the white row).
+- Type: Outfit (OFL), Bold for titles and Medium for everything else, with overlapping outlines
+  merged (`tools/merge_font_overlaps.py`) so distance-field glyphs have no seams.
+- Wordmark: the mark, then "Third Angle" in Outfit Bold. The mark is the third-angle projection
+  symbol drawn for a block: a square frustum end on (nested squares, the inner one coral) beside
+  its front view (a trapezoid) on a shared centre line.
+- View icons: a cube with the viewed face solid and an arrow pointing at it from the camera's
+  side; the free view is a three-tone cube.
 
-## Variants
+## Sound
 
-`[theme] variant` in `game.project` picks a look at startup; `view/theme.lua` holds the base (the
-workshop) and each variant's overrides.
-
-- `geometric`: this direction.
-- `gallery`: a dark neutral room, a spotlight and pool of light on the board, lacquer tiles. Clear
-  but moody and flat.
-- `workshop`: the first direction (paper screens, lacquered wood, plaster wall with window
-  light, paper cards, oak tray). Warm but muddy; kept for reference.
+Dry and physical, like the pieces: short plastic clicks and thumps for interface and moves,
+muted plucks (felt on wood) for a matched wall and the solve, a low soft pad with sparse muted
+notes for music. No ringing bells or long reverb tails; the earlier chime set felt too "chimey".
 
 ## Open
 
-- Motion and sound for "satisfying": pieces snapping with a small bounce and click, a wall that
-  responds when matched, a solve that feels earned.
-- A real wordmark (the title is a working title in plain type).
-- Settings controls (tracks, knobs, segments) still use the older pill shapes.
-- Icons: the four view buttons share near-identical icons.
-- The pool of light in `gallery` sits at a fixed screen height, wrong on the menu.
+- Motion for "satisfying" if play-testing asks for it: a landing bounce, a stronger wall
+  response, a staged solve. The current feel was judged good enough in the fourth session.

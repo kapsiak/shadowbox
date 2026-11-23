@@ -1,5 +1,6 @@
 -- Draws the HUD layout published in ui/hud_model. Buttons ease in and out as the layout
--- gains or loses them; rail buttons also slide in from the right edge.
+-- gains or loses them (gone at once while a screen change covers the screen); rail buttons also
+-- slide in from the right edge.
 local models = require "ui.models"
 
 local theme = require "view.theme"
@@ -9,16 +10,17 @@ local TEXT = { title = theme.vec(theme.ui.ink), body = theme.vec(theme.ui.ink) }
 local FONT_SIZE = { title = 64, body = 40 }
 local ICON = theme.vec(theme.ui.icon)
 local SHADOW = theme.vec(theme.ui.shadow)
+local LIFT = theme.ui.lift
 local EASE_RATE = 14
 local PULSE = 0.86
 
 local function createButton(id)
 	local shadow = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(shadow, "hud")
-	gui.play_flipbook(shadow, theme.ui.card_shadow)
+	gui.play_flipbook(shadow, "key")
 	local face = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(face, "hud")
-	gui.play_flipbook(face, theme.ui.card_image)
+	gui.play_flipbook(face, "key")
 	local icon = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(icon, "hud")
 	gui.play_flipbook(icon, id)
@@ -53,7 +55,7 @@ local function drawLabel(label, k)
 end
 
 -- Labels fade in and out with the layout; the banner pops in from a smaller scale each time.
-local function updateLabels(self, layout, k)
+local function updateLabels(self, layout, k, covered)
 	local present = {}
 	for _, spec in ipairs(layout.labels) do
 		local label = self.labels[spec.id] or createLabel(spec)
@@ -62,7 +64,7 @@ local function updateLabels(self, layout, k)
 		present[spec.id] = true
 	end
 	for id, label in pairs(self.labels) do
-		label.shown = label.shown + ((present[id] and 1 or 0) - label.shown) * k
+		label.shown = (covered and not present[id]) and 0 or label.shown + ((present[id] and 1 or 0) - label.shown) * k
 		if not present[id] and id == "banner" then
 			label.scale = 0.6
 		end
@@ -83,14 +85,13 @@ local function draw(b)
 	local visible = b.shown > 0.01
 	gui.set_enabled(b.face, visible)
 	gui.set_enabled(b.shadow, visible)
-	local lift = theme.ui.lift
 	local pressed = (1 - b.scale) / (1 - PULSE)
-	local size = spec.size * (lift.sink and 1 or b.scale)
-	local drop = lift.drop * spec.size
-	gui.set_screen_position(b.face, vmath.vector3(spec.x + slide, spec.y - (lift.sink and drop * pressed or 0), 0))
+	local size = spec.size
+	local drop = LIFT * spec.size
+	gui.set_screen_position(b.face, vmath.vector3(spec.x + slide, spec.y - drop * pressed, 0))
 	gui.set_screen_position(b.shadow, vmath.vector3(spec.x + slide, spec.y - drop, 0))
 	gui.set_size(b.face, vmath.vector3(size, size, 0))
-	gui.set_size(b.shadow, vmath.vector3(size * (1 + lift.spread), size * (1 + lift.spread), 0))
+	gui.set_size(b.shadow, vmath.vector3(size, size, 0))
 	gui.set_size(b.icon, vmath.vector3(size * 0.62, size * 0.62, 0))
 	local face, icon, shadow = vmath.vector4(FACE), vmath.vector4(ICON), vmath.vector4(SHADOW)
 	face.w, shadow.w = face.w * b.shown, shadow.w * b.shown
@@ -103,6 +104,7 @@ end
 function update(self, dt)
 	local layout = models.layout("hud") or { buttons = {}, labels = {} }
 	local k = 1 - math.exp(-EASE_RATE * dt)
+	local covered = (models.layout("fade") or 0) > 0.95
 	local present = {}
 	for _, spec in ipairs(layout.buttons) do
 		local b = self.buttons[spec.id] or createButton(spec.id)
@@ -115,10 +117,10 @@ function update(self, dt)
 			self.buttons[id].scale = PULSE
 		end
 	end
-	updateLabels(self, layout, k)
+	updateLabels(self, layout, k, covered)
 	for id, b in pairs(self.buttons) do
 		local spec = present[id]
-		b.shown = approach(b.shown, spec and 1 or 0, k)
+		b.shown = (covered and not spec) and 0 or approach(b.shown, spec and 1 or 0, k)
 		b.enabled = approach(b.enabled, (spec and spec.enabled) and 1 or 0, k)
 		b.scale = approach(b.scale, 1, k)
 		draw(b)

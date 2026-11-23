@@ -1,15 +1,17 @@
-# ProjectionGame (working title)
+# Third Angle
 
 A Defold 1.13 3D puzzle game: arrange coloured polycube pieces in a grid so their shadows match the
 target projections on the walls. Targets desktop, mobile and web. Read `principles.md` first; the
 code follows it (pure core, deciding vs doing, explicit frame phases, data as the single truth).
-The working title lives only in `game.project` (`[project] title`) and is read at runtime.
+The title lives only in `game.project` (`[project] title`) and is read at runtime; the mark
+(the third-angle projection symbol for a block) is drawn by `tools/make_icons.py`.
 
 ## Commands
 - Specs: `busted` (LuaJIT; `.busted` config). Keep specs compact, one file per area in `spec/`.
 - Level preview: `luajit tools/preview.lua levels/<pack>/<level>.lua`
 - Regenerate icons / sounds: `python3 tools/make_icons.py`, `python3 tools/make_sounds.py`
-  (then refresh `ui/hud.atlas` from `ui/icons/*.png`).
+  (then refresh `ui/hud.atlas` from `ui/icons/*.png`). New or updated fonts: run
+  `tools/merge_font_overlaps.py` (needs fonttools and skia-pathops).
 - Run: the Defold editor's HTTP API (`.internal/editor.port` and `.internal/editor.token`):
   `POST /command/run`, `GET /console`, `POST /command/hot-reload`, `POST /command/fetch-libraries`.
 - Automation Bridge (a debug-only dependency) on the engine port from the run response:
@@ -27,8 +29,7 @@ The working title lives only in `game.project` (`[project] title`) and is read a
 - `input/`: `actions` (Defold → raw events), `router` (controls claim input), `gestures`, `interpret`.
 - `view/`: `board_view` (pieces), `walls_view` (projection panels), `tray_view`, `thumbs` (live level
   thumbnails), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
-  `theme` (**all colours and lighting: restyle here**; looks are variants picked by `[theme] variant`
-  in `game.project`), `palette`.
+  `theme` (**all colours and lighting: restyle here**), `palette`.
 - `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout`, `sheets` content), `models`
   (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
 - `render/game.render_script`: background → `gui_back` (select screen) → board (panels, cubes,
@@ -43,7 +44,7 @@ snake_case variables, camelCase functions, comments only where needed, Lua 5.1/L
 GUI scripts only draw what `ui/models` publishes; input decisions happen in `main` phases.
 Never commit or modify git; the user does that.
 
-## Status (end of third session)
+## Status (end of fourth session)
 Done: core model, rendering, camera (ortho snaps), drag with auto-settle, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -53,19 +54,22 @@ and sway. Saving: versioned format, two slots, boards dropped when their level c
 (0.5 s after changes settle, at least every 5 s, at once on solve, screen change, focus loss and
 quit); undo history is kept per level for the session only.
 
-Third session (art): the look is now `geometric` (`docs/art_direction.md`), with `workshop` and
-`gallery` kept as switchable variants. Pieces are one seamless body with bevels from a per-face
-tangent stream, glossy or lacquered (wood grain along each piece's long axis in the workshop);
-glass is frosted and blended in one pass. The board is an open box (walls stand on the floor at
-the floor's edge). The floor folds light, so glass casts tinted light there. Wall cells ease at a
+Third session (art): the look is now `geometric` (`docs/art_direction.md`); the `workshop` and
+`gallery` variants were removed in the fourth session. Pieces are one seamless body with bevels
+from a per-face tangent stream, glossy; glass is frosted and blended in one pass. The board is an open box (walls stand on the floor at
+the floor's edge). The floor shows only soft contact under pieces unless the top view is judged (its live cast shadow was removed in the fourth session as visually odd). Wall cells ease at a
 constant speed and merge with neighbours continuously. Interface: Outfit (OFL), chamfered keys on
 a solid lip that sink when pressed, side-column main menu on wide screens, chapter pages on the
 level select, controls sized to fit beside their labels. The panel GUI pools item nodes by slot
 (it used to run out of nodes).
 
+Fourth session (polish): named Third Angle with a wordmark; the workshop and gallery variants
+and their shader, GUI and asset paths removed; settings controls restyled as chamfered keys;
+distinct view icons; a dry, physical sound set; the floor's live cast shadow removed; outgoing
+buttons no longer linger over screen changes (the panel's fade stays above pooled nodes).
+
 Next, in order:
-1. Art polish (`docs/art_direction.md`, "Open"): motion and sound for "satisfying" (snap, match,
-   solve), settings controls, wordmark, view icons.
+1. Art polish is done for now (fourth session); motion only if play-testing asks for it.
 2. Mechanics prototype (`docs/mechanics.md`): ray inspection on hover, then draw the pattern
    channel.
 3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).

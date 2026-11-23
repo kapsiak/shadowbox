@@ -5,7 +5,7 @@ in mediump float var_facing;
 
 out vec4 out_fragColor;
 
-// Per cell (one texel each): r target, g judged coverage, b unjudged coverage, a contact.
+// Per cell (one texel each): r target, g judged coverage, a contact.
 uniform mediump sampler2D cells;
 // The same texture, filtered, for soft contact shadows.
 uniform mediump sampler2D soft;
@@ -25,9 +25,9 @@ uniform fs_uniforms
     mediump vec4 opacity;
     // the selected piece's colour
     mediump vec4 accent;
-    mediump vec4 paper;
+    mediump vec4 surface;
     mediump vec4 shadow;
-    mediump vec4 pencil;
+    mediump vec4 line;
     mediump vec4 frame;
 };
 
@@ -38,19 +38,6 @@ float roundedBox(vec2 p, vec2 half_size, float radius)
 {
     vec2 q = abs(p) - half_size + radius;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
-}
-
-float hash(vec2 p)
-{
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-float noise(vec2 p)
-{
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
 bool inGrid(vec2 c)
@@ -134,44 +121,41 @@ void main()
     vec2 cell_uv = (cell + 0.5) / dims.xy;
     vec4 received_t = inside ? texture(received, cell_uv) : vec4(0.0);
     vec4 want_t = inside ? texture(target, cell_uv) : vec4(0.0);
-    vec3 received_color = mix(shadow.rgb, paper.rgb * received_t.rgb, received_t.a);
-    vec3 want_color = mix(shadow.rgb, paper.rgb * want_t.rgb, want_t.a);
+    vec3 received_color = mix(shadow.rgb, surface.rgb * received_t.rgb, received_t.a);
+    vec3 want_color = mix(shadow.rgb, surface.rgb * want_t.rgb, want_t.a);
     float matches = 1.0 - smoothstep(0.04, 0.15, distance(received_color, want_color));
 
-    // Paper: faint grain and a light pencil grid so cells stay countable.
-    vec3 color = paper.rgb * (0.99 + 0.015 * noise(grid * 14.0));
+    // The surface, with a light grid so cells stay countable.
+    vec3 color = surface.rgb;
     vec2 to_line = abs(fract(grid + 0.5) - 0.5);
     float grid_line = inside ? 1.0 - smoothstep(0.0, 1.5 * aa, min(to_line.x, to_line.y)) : 0.0;
-    color = mix(color, pencil.rgb, 0.08 * grid_line);
+    color = mix(color, line.rgb, 0.08 * grid_line);
 
-    // Floor: the live shadow (or glass light) while unjudged and soft contact under pieces.
-    vec4 soft_t = texture(soft, var_uv);
-    color = mix(color, received_color, 0.45 * soft_t.b);
-    color *= 1.0 - 0.12 * soft_t.a;
+    // Floor: soft contact under pieces.
+    color *= 1.0 - 0.12 * texture(soft, var_uv).a;
 
     // Missing target cells keep a faint wash of the wanted light.
     float in_target = s.r * step(0.5, s.r);
-    color = mix(color, mix(pencil.rgb, want_color, want_t.a), 0.07 * in_target * (1.0 - s.g));
+    color = mix(color, mix(line.rgb, want_color, want_t.a), 0.07 * in_target * (1.0 - s.g));
 
     // Coverage: grows from each cell's centre; merged with covered neighbours.
     float g_edge = edgeDistance(local, g_side, g_corner);
     float covered = inside ? smoothstep(-aa, aa, g_edge - 0.5 * (1.0 - s.g)) * smoothstep(0.0, 0.2, s.g) : 0.0;
     color = mix(color, received_color, covered);
 
-    // Unwanted coverage is crossed out with paper-coloured hatching.
+    // Unwanted coverage is crossed out with surface-coloured hatching.
     float stripe = abs(fract((grid.x + grid.y) * 3.0) - 0.5);
     float hatch = 1.0 - smoothstep(0.12, 0.12 + 3.0 * aa, stripe);
-    color = mix(color, paper.rgb, 0.55 * hatch * covered * max(0.0, s.g - s.r));
+    color = mix(color, surface.rgb, 0.55 * hatch * covered * max(0.0, s.g - s.r));
 
-    // Target contour: a pencil line inside the region's edge, swallowed by a matching shadow,
+    // Target contour: a line inside the region's edge, swallowed by a matching shadow,
     // turning to ink as the wall is satisfied.
     float t_edge = edgeDistance(local, t_side, t_corner);
     float line_width = 0.045 + 0.02 * opacity.z;
     float contour = inside ? in_target * (1.0 - smoothstep(line_width, line_width + aa, t_edge)) : 0.0;
-    float sketchy = 0.8 + 0.2 * noise(grid * vec2(9.0, 7.0));
-    vec3 ink = mix(pencil.rgb, pencil.rgb * 0.45, opacity.z);
+    vec3 ink = mix(line.rgb, line.rgb * 0.45, opacity.z);
     vec3 line_color = mix(ink, want_color * 0.8, want_t.a);
-    color = mix(color, line_color, contour * sketchy * (1.0 - 0.85 * s.g * matches));
+    color = mix(color, line_color, contour * (1.0 - 0.85 * s.g * matches));
 
     // The selected piece's cast: a tint and an outline in its colour.
     float f_own = inside ? focusAt(cell) : 0.0;
@@ -180,14 +164,13 @@ void main()
     color = mix(color, mix(color, accent.rgb, 0.3), f_own * step(0.5, f_own));
     color = mix(color, accent.rgb * 0.85, f_line);
 
-    // Wooden frame around the paper.
+    // A frame around the surface.
     // Only sides with a border carry it, so a wall's foot meets the floor's frame cleanly.
     vec4 to_edge = vec4(grid.x - body_lo.x, body_hi.x - grid.x, grid.y - body_lo.y, body_hi.y - grid.y);
     vec4 framed = mix(vec4(8.0), to_edge, step(0.1, margins));
     float frame_d = min(min(framed.x, framed.y), min(framed.z, framed.w));
     float frame_band = 1.0 - smoothstep(0.07, 0.07 + aa, frame_d);
-    vec3 wood = frame.rgb * (0.9 + 0.12 * noise(grid * vec2(1.5, 18.0)));
-    color = mix(color, wood, frame_band);
+    color = mix(color, frame.rgb, frame_band);
 
     // A satisfied wall's light brightens for a moment.
     color = mix(color, vec3(1.0), 0.15 * opacity.y * (1.0 - frame_band));

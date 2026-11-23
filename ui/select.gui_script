@@ -1,4 +1,4 @@
--- Draws the level select layout published in ui/models ("select"): a paper page per chapter
+-- Draws the level select layout published in ui/models ("select"): a page per chapter
 -- with its banner and trail, and under each level a plinth, its label and a badge. Drawn beneath the 3D thumbnails
 -- (gui_back material), which sit on the plinths.
 local models = require "ui.models"
@@ -10,17 +10,15 @@ local SOFT_INK = theme.vec(theme.ui.soft_ink)
 local SHADOW = theme.vec(theme.ui.shadow)
 local SOLVED = theme.vec(theme.ui.solved)
 local LOCKED = theme.vec(theme.ui.cell_off)
-local FONT_SIZE = { title = 64, body = 40, hand = 56 }
+local FONT_SIZE = { title = 64, body = 40 }
 local FADE_RATE = 10
 local PAGE = theme.vec(theme.ui.page)
 local SLICE = vmath.vector4(30, 30, 30, 30)
 local INK_MIX = 0.35
-local LABEL_FONT = theme.ui.label_font
-local PAGE_TILT = theme.ui.page_tilt
-local LABEL_SIZE = LABEL_FONT == "hand" and 0.17 or 0.13
+local LABEL_SIZE = 0.13
 local PULSE_RATE = 2.4
 
--- A chapter's accent, drawn as coloured pencil: mixed toward the ink so it sits on paper.
+-- A chapter's accent, mixed toward the ink so it sits quietly on the page.
 local function accentOf(name)
 	local c = theme.vec(theme.palettes.default[name] or theme.ui.accent)
 	return c + (INK - c) * INK_MIX
@@ -96,10 +94,10 @@ local function drawNode(n, spec, alpha, pulse)
 		place(n.lock, x, y - s * 0.05, s * 0.32, s * 0.32, withAlpha(SOFT_INK, alpha * 0.6))
 	end
 	local label = locked and tostring(spec.index) or ("%d  %s"):format(spec.index, spec.name)
-	setText(n.label, LABEL_FONT, label, x, y - s * 0.62, s * LABEL_SIZE, withAlpha(locked and SOFT_INK or INK, alpha * (locked and 0.6 or 1)))
+	setText(n.label, "body", label, x, y - s * 0.62, s * LABEL_SIZE, withAlpha(locked and SOFT_INK or INK, alpha * (locked and 0.6 or 1)))
 	gui.set_enabled(n.check, spec.state == "solved")
 	if spec.state == "solved" then
-		local label_w = textWidth(LABEL_FONT, label, s * LABEL_SIZE)
+		local label_w = textWidth("body", label, s * LABEL_SIZE)
 		place(n.check, x + label_w / 2 + s * 0.12, y - s * 0.62, s * 0.14, s * 0.14, withAlpha(SOLVED, alpha))
 	end
 end
@@ -112,7 +110,7 @@ end
 -- Pages go beneath everything else on the screen (the title is the first node created).
 local function page(self, id)
 	if not self.pages[id] then
-		local p = { shadow = box(theme.ui.card_shadow, true), sheet = box(theme.ui.card_image, true) }
+		local p = { shadow = box("key", true), sheet = box("key", true) }
 		gui.move_below(p.shadow, self.title)
 		gui.move_below(p.sheet, self.title)
 		self.pages[id] = p
@@ -121,16 +119,13 @@ local function page(self, id)
 end
 
 local function drawPage(p, spec, alpha)
-	local rotation = vmath.vector3(0, 0, spec.lean * PAGE_TILT)
 	place(p.shadow, spec.x, spec.y - spec.h * 0.01 - 6, spec.w * 1.01, spec.h * 1.01 + 8, withAlpha(SHADOW, alpha))
 	place(p.sheet, spec.x, spec.y, spec.w, spec.h, withAlpha(PAGE, alpha))
-	gui.set_rotation(p.shadow, rotation)
-	gui.set_rotation(p.sheet, rotation)
 end
 
 local function levelNode(self, id)
 	self.nodes[id] = self.nodes[id] or {
-		halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text(LABEL_FONT), check = box("check"),
+		halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check"),
 	}
 	return self.nodes[id]
 end

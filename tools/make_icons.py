@@ -1,7 +1,7 @@
 """Generates the HUD icon images into ui/icons/. Usage: python3 tools/make_icons.py"""
 import math
 import pathlib
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 SIZE = 96
 SS = 4
@@ -70,25 +70,51 @@ def turn(name, mirror=False):
     save(img, name)
 
 
-def cube_points():
-    c = (48, 50)
-    r = 26
+def cube_points(c, r):
     top = (c[0], c[1] - r)
     ul, ur = (c[0] - r * 0.87, c[1] - r * 0.5), (c[0] + r * 0.87, c[1] - r * 0.5)
     ll, lr = (c[0] - r * 0.87, c[1] + r * 0.5), (c[0] + r * 0.87, c[1] + r * 0.5)
     bottom = (c[0], c[1] + r)
-    return c, top, ul, ur, ll, lr, bottom
+    return {"top": [top, ur, c, ul], "front": [ul, c, bottom, ll], "side": [c, ur, lr, bottom]}
+
+
+def cube(d, c, r, alphas):
+    """An isometric cube whose faces are filled at the given alphas, with crisp edges."""
+    faces = cube_points(c, r)
+    for face, alpha in alphas.items():
+        d.polygon([(s(x), s(y)) for x, y in faces[face]], fill=(255, 255, 255, alpha))
+    t, ur, c_, ul = faces["top"]
+    _, _, lr, bottom = faces["side"]
+    _, _, _, ll = faces["front"]
+    line(d, [t, ur, lr, bottom, ll, ul, t], width=4)
+    line(d, [ul, c_, ur], width=4)
+    line(d, [c_, bottom], width=4)
+
+
+# Where each view's camera looks from, as the face it sees and a unit direction on screen
+# from that face's centre out towards the camera.
+VIEWS = {
+    "front": ((58, 40), (-0.87, 0.5)),
+    "side": ((38, 40), (0.87, 0.5)),
+    "top": ((48, 60), (0.0, -1.0)),
+}
 
 
 def view_cube(name, face):
-    img, d = canvas()
-    c, top, ul, ur, ll, lr, bottom = cube_points()
-    faces = {"top": [top, ur, c, ul], "front": [ul, c, bottom, ll], "side": [c, ur, lr, bottom]}
-    if face in faces:
-        d.polygon([(s(x), s(y)) for x, y in faces[face]], fill=WHITE)
-    line(d, [top, ur, lr, bottom, ll, ul, top], width=5)
-    line(d, [ul, c, ur], width=5)
-    line(d, [c, bottom], width=5)
+    img = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img, "RGBA")
+    if face is None:
+        cube(d, (48, 49), 36, {"top": 255, "side": 150, "front": 80})
+        save(img, name)
+        return
+    centre, (dx, dy) = VIEWS[face]
+    r = 27
+    cube(d, centre, r, {k: 255 if k == face else 60 for k in ("top", "front", "side")})
+    pts = cube_points(centre, r)[face]
+    fx, fy = sum(p[0] for p in pts) / 4, sum(p[1] for p in pts) / 4
+    tip = (fx + dx * 15, fy + dy * 15)
+    line(d, [(fx + dx * 42, fy + dy * 42), (tip[0] + dx * 10, tip[1] + dy * 10)], width=7)
+    arrowhead(d, tip, math.atan2(-dy, -dx), length=19, spread=0.6)
     save(img, name)
 
 
@@ -170,68 +196,6 @@ def dot():
     save(img, "dot")
 
 
-def paper_outline(inset, radius, wobble, seed):
-    """Points around a rounded square (96-unit space), pushed in and out a little like a torn edge."""
-    import random
-    rng = random.Random(seed)
-    lo, hi = inset, SIZE - inset
-    pts = []
-    corners = [(hi - radius, lo + radius, -90), (hi - radius, hi - radius, 0), (lo + radius, hi - radius, 90), (lo + radius, lo + radius, 180)]
-    for cx, cy, start in corners:
-        for i in range(12):
-            a = math.radians(start + 90 * i / 11)
-            pts.append((cx + radius * math.cos(a), cy + radius * math.sin(a)))
-    out, offset = [], 0.0
-    for i, (x, y) in enumerate(pts):
-        nx, ny = pts[(i + 1) % len(pts)]
-        offset = offset * 0.6 + rng.uniform(-wobble, wobble)
-        dx, dy = ny - y, x - nx
-        length = math.hypot(dx, dy) or 1
-        out.append((s(x + dx / length * offset), s(y + dy / length * offset)))
-    return out
-
-
-def button():
-    """A paper card: off-white with a faintly darker, slightly deckled edge. 9-sliced at 30."""
-    mask = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    ImageDraw.Draw(mask).polygon(paper_outline(5, 8, 0.7, 7), fill=255)
-    soft = mask.filter(ImageFilter.GaussianBlur(s(2.5)))
-    shade = soft.point(lambda v: int(232 + 23 * min(1.0, max(0.0, (v / 255 - 0.5) * 2))))
-    img = Image.merge("RGBA", (shade, shade, shade, mask))
-    save(img, "button")
-    shadow = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    ImageDraw.Draw(shadow).polygon(paper_outline(9, 10, 0.0, 7), fill=255)
-    shadow = shadow.resize((SIZE, SIZE), Image.LANCZOS).filter(ImageFilter.GaussianBlur(4))
-    white = Image.new("L", (SIZE, SIZE), 255)
-    Image.merge("RGBA", (white, white, white, shadow)).save(OUT / "button_shadow.png")
-
-
-def tile():
-    """A lacquered tile: a lit top rim, a body darkening a little downward and a shaded foot.
-    Greyscale, tinted by the theme. 9-sliced at 30."""
-    mask = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((s(5), s(5), s(91), s(91)), radius=s(14), fill=255)
-    shade = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    sd = ImageDraw.Draw(shade)
-    for y in range(SIZE * SS):
-        t = y / (SIZE * SS)
-        sd.line((0, y, SIZE * SS, y), fill=int(255 * (0.9 - 0.12 * t)))
-    rim = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    ImageDraw.Draw(rim).rounded_rectangle((s(5), s(5), s(91), s(91)), radius=s(14), outline=255, width=6)
-    top = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    ImageDraw.Draw(top).rectangle((0, 0, SIZE * SS, s(30)), fill=255)
-    lit = Image.composite(Image.new("L", shade.size, 255), shade, Image.composite(rim, Image.new("L", rim.size, 0), top))
-    foot = Image.new("L", (SIZE * SS, SIZE * SS), 0)
-    ImageDraw.Draw(foot).rectangle((0, s(86), SIZE * SS, SIZE * SS), fill=255)
-    lit = Image.composite(Image.new("L", shade.size, 150), lit, Image.composite(rim, Image.new("L", rim.size, 0), foot))
-    save(Image.merge("RGBA", (lit, lit, lit, mask)), "tile")
-    shadow = Image.new("L", (SIZE, SIZE), 0)
-    ImageDraw.Draw(shadow).rounded_rectangle((10, 12, 86, 90), radius=16, fill=255)
-    shadow = shadow.filter(ImageFilter.GaussianBlur(5))
-    white = Image.new("L", (SIZE, SIZE), 255)
-    Image.merge("RGBA", (white, white, white, shadow)).save(OUT / "tile_shadow.png")
-
-
 def key():
     """A flat key with chamfered corners, like a bevelled cube; also its solid lip. 9-sliced at 30."""
     img, d = canvas()
@@ -240,8 +204,31 @@ def key():
     save(img, "key")
 
 
+def mark():
+    """The wordmark's mark: the third-angle projection symbol drawn for a block. A square frustum
+    seen end on (two nested squares) beside its front view (a trapezoid, narrow end towards the
+    squares), on a shared centre line. Twice as wide as tall; the inner square is a separate
+    image so it can take the accent colour."""
+    w, h = SIZE * 2, SIZE
+    ink = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+    accent = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+    d, a = ImageDraw.Draw(ink), ImageDraw.Draw(accent)
+    cy, big, small, stroke = 48, 34, 16, 10
+    sq = 52
+    d.rectangle((s(sq - big), s(cy - big), s(sq + big), s(cy + big)), outline=WHITE, width=s(stroke))
+    a.rectangle((s(sq - small), s(cy - small), s(sq + small), s(cy + small)), fill=WHITE)
+    left, right = 112, 180
+    trapezoid = [(left, cy - small), (right, cy - big), (right, cy + big), (left, cy + small)]
+    d.polygon([(s(x), s(y)) for x, y in trapezoid], outline=WHITE, width=s(stroke))
+    for x0, x1 in ((4, 12), (92, 104), (186, 191)):
+        d.rectangle((s(x0), s(cy - 1.5), s(x1), s(cy + 1.5)), fill=WHITE)
+    ink.resize((w, h), Image.LANCZOS).save(OUT / "mark.png")
+    accent.resize((w, h), Image.LANCZOS).save(OUT / "mark_accent.png")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    mark()
     menu()
     curved_arrow("undo")
     curved_arrow("redo", mirror=True)
@@ -261,8 +248,6 @@ def main():
     check()
     lock()
     dot()
-    button()
-    tile()
     key()
 
 

@@ -113,21 +113,17 @@ end
 
 local WHITE = channels.light.identity
 
--- What the displayed pieces cast on the floor: the light each column lets through and the
--- columns touching it.
-local function floorShadow(level, poses)
-	local items, contact = {}, {}
+-- The floor cells the displayed pieces touch.
+local function floorContact(level, poses)
+	local contact = {}
 	for id, pose in pairs(poses) do
-		local cells = boardCells(level, id, pose)
-		items[#items + 1] = { cells = cells, value = level.pieces[id].value }
-		for _, c in ipairs(cells) do
+		for _, c in ipairs(boardCells(level, id, pose)) do
 			if c[2] == 0 then
 				contact[c[1] + c[3] * level.size[1] + 1] = true
 			end
 		end
 	end
-	local light = projection.project(level.size, "top", { "light" }, items).layers.light
-	return { light = light, contact = contact }
+	return contact
 end
 
 -- Writes the colour of `light` into texel i: rgb the glass colour and a = 1, or a = 0 for
@@ -144,10 +140,10 @@ local function lightGoal(goal, i, light)
 	end
 end
 
--- cells, per texel: target, judged coverage, unjudged coverage, contact, in [0, 1];
+-- cells, per texel: target, judged coverage, unused, contact, in [0, 1];
 -- received and target: the colour of the light received and wanted (see lightGoal).
--- `shadow` is given for the floor only.
-local function cellGoals(wall, target, comparison, shadow)
+-- `contact` is given for the floor only.
+local function cellGoals(wall, target, comparison, contact)
 	local goal = wall.layers.cells.goal
 	local wanted = target and target.layers.light
 	local current = comparison and comparison.current.layers.light
@@ -155,10 +151,8 @@ local function cellGoals(wall, target, comparison, shadow)
 		local base = (i - 1) * 4
 		goal[base + 1] = wanted and wanted[i] ~= WHITE and 1 or 0
 		goal[base + 2] = current and current[i] ~= WHITE and 1 or 0
-		local cast = shadow and not comparison and shadow.light[i]
-		goal[base + 3] = cast and cast ~= WHITE and 1 or 0
-		goal[base + 4] = shadow and shadow.contact[i] and 1 or 0
-		lightGoal(wall.layers.received.goal, i, current and current[i] or cast)
+		goal[base + 4] = contact and contact[i] and 1 or 0
+		lightGoal(wall.layers.received.goal, i, current and current[i])
 		lightGoal(wall.layers.target.goal, i, wanted and wanted[i])
 	end
 end
@@ -174,10 +168,10 @@ function M.present(walls, display, focus)
 			go.set(wall.mesh, "accent", focus.color)
 		end
 	end
-	local shadow = floorShadow(level, display.poses)
+	local contact = floorContact(level, display.poses)
 	for name, wall in pairs(walls.list) do
 		local comparison = display.evaluation.views[name]
-		cellGoals(wall, level.targets[name], comparison, name == "top" and shadow or nil)
+		cellGoals(wall, level.targets[name], comparison, name == "top" and contact or nil)
 		local matched = comparison ~= nil and comparison.matches
 		if matched and not wall.matched then
 			wall.pulse = 1
@@ -195,7 +189,7 @@ function M.configure(walls, prefs)
 	walls.style = style
 	local colors = theme.panel[style]
 	for _, wall in pairs(walls.list) do
-		for _, key in ipairs({ "paper", "shadow", "pencil", "frame" }) do
+		for _, key in ipairs({ "surface", "shadow", "line", "frame" }) do
 			go.set(wall.mesh, key, theme.vec(colors[key]))
 		end
 	end

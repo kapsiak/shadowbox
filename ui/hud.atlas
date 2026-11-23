@@ -2,12 +2,6 @@ images {
   image: "/ui/icons/back.png"
 }
 images {
-  image: "/ui/icons/button.png"
-}
-images {
-  image: "/ui/icons/button_shadow.png"
-}
-images {
   image: "/ui/icons/check.png"
 }
 images {
@@ -26,6 +20,12 @@ images {
   image: "/ui/icons/lower.png"
 }
 images {
+  image: "/ui/icons/mark.png"
+}
+images {
+  image: "/ui/icons/mark_accent.png"
+}
+images {
   image: "/ui/icons/menu.png"
 }
 images {
@@ -42,12 +42,6 @@ images {
 }
 images {
   image: "/ui/icons/tip_away.png"
-}
-images {
-  image: "/ui/icons/tile.png"
-}
-images {
-  image: "/ui/icons/tile_shadow.png"
 }
 images {
   image: "/ui/icons/turn_left.png"

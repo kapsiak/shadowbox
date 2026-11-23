@@ -56,22 +56,18 @@ local function writeText(node, font, value, x, y, size, color, pivot)
 	gui.set_color(node, color)
 end
 
--- A pill: a bar with round ends, drawn as a middle box between two dots.
-local function pill()
-	return { mid = box(), left = box("dot"), right = box("dot") }
+-- A bar with chamfered corners, cut in proportion to its height: the key image is sliced at
+-- its full height and scaled down, so even thin bars keep whole corners.
+local KEY_SIZE = 96
+
+local function bar()
+	return box("key", true)
 end
 
-local function placePill(p, x, y, w, h, color)
-	w = math.max(w, h)
-	place(p.mid, x, y, w - h, h, color)
-	place(p.left, x - (w - h) / 2, y, h, h, color)
-	place(p.right, x + (w - h) / 2, y, h, h, color)
-end
-
-local function enablePill(p, enabled)
-	gui.set_enabled(p.mid, enabled)
-	gui.set_enabled(p.left, enabled)
-	gui.set_enabled(p.right, enabled)
+local function placeBar(node, x, y, w, h, color)
+	local k = h / KEY_SIZE
+	place(node, x, y, math.max(w, h) / k, KEY_SIZE, color)
+	gui.set_scale(node, vmath.vector3(k, k, 1))
 end
 
 local MAX_SEGMENTS = 4
@@ -79,8 +75,8 @@ local MAX_SEGMENTS = 4
 
 local function createItem()
 	local item = {
-		shadow = box(ui.card_shadow, true), face = box(ui.card_image, true), label = text("body"),
-		track = pill(), fill = pill(), knob_shadow = box("dot"), knob = box("dot"), scale = 1,
+		shadow = box("key", true), face = box("key", true), label = text("body"),
+		track = bar(), fill = bar(), knob_shadow = bar(), knob = bar(), scale = 1,
 		segments = {},
 	}
 	for i = 1, MAX_SEGMENTS do
@@ -94,10 +90,10 @@ local function enableItem(item, enabled, control)
 	gui.set_enabled(item.shadow, enabled and control ~= "tabs")
 	gui.set_enabled(item.face, enabled and control ~= "tabs")
 	gui.set_enabled(item.label, enabled and control ~= "tabs")
-	enablePill(item.track, enabled and control ~= nil)
-	enablePill(item.fill, enabled and (control == "slider" or segmented))
-	gui.set_enabled(item.knob, enabled and (control == "slider" or control == "toggle"))
-	gui.set_enabled(item.knob_shadow, enabled and (control == "slider" or control == "toggle"))
+	gui.set_enabled(item.track, enabled and control ~= nil)
+	gui.set_enabled(item.fill, enabled and control == "slider")
+	gui.set_enabled(item.knob, enabled and control ~= nil)
+	gui.set_enabled(item.knob_shadow, enabled and control ~= nil)
 	for i, node in ipairs(item.segments) do
 		gui.set_enabled(node, enabled and segmented and (item.segment_count or 0) >= i)
 	end
@@ -105,21 +101,27 @@ end
 
 -- Items are pooled by their position on the sheet, so the node count stays bounded by the
 -- largest sheet; a slot taken by a different item forgets the old one's eased state.
+-- New nodes draw above older ones, so the fade is raised over each new item.
 local function slotFor(self, i, id)
-	local item = self.items[i] or createItem()
-	self.items[i] = item
+	local item = self.items[i]
+	if not item then
+		item = createItem()
+		self.items[i] = item
+		gui.move_above(self.fade, nil)
+	end
 	if item.id ~= id then
 		item.id, item.on, item.selected, item.scale = id, nil, nil, 1
 	end
 	return item
 end
 
-local function drawKnob(item, x, y, size, a)
-	place(item.knob_shadow, x, y - size * 0.06, size * 1.12, size * 1.12, withAlpha(SHADOW, a * 1.6))
-	place(item.knob, x, y, size, size, withAlpha(WHITE, a))
+-- A small key on its lip: white, or coral where it would sit on a white row.
+local function drawKnob(item, x, y, w, h, a, primary)
+	placeBar(item.knob_shadow, x, y - h * LIFT, w, h, withAlpha(primary and PRIMARY_SHADOW or SHADOW, a))
+	placeBar(item.knob, x, y, w, h, withAlpha(primary and PRIMARY or WHITE, a))
 end
 
--- Segmented control: a track with the selected segment raised as a white pill.
+-- Segmented control: a track with the selected segment raised as a white key.
 local function drawSegments(item, spec, a)
 	local n = #spec.segments
 	local seg_w = spec.track_w / n
@@ -132,9 +134,9 @@ local function drawSegments(item, spec, a)
 	end
 	item.selected = (item.selected or selected) + (selected - (item.selected or selected)) * 0.35
 	local cx = spec.track_x + spec.track_w / 2
-	placePill(item.track, cx, spec.y, spec.track_w, th, withAlpha(TRACK, a))
+	placeBar(item.track, cx, spec.y, spec.track_w, th, withAlpha(TRACK, a))
 	local sx = spec.track_x + seg_w * (item.selected - 0.5)
-	placePill(item.fill, sx, spec.y, seg_w - th * 0.12, th * 0.86, withAlpha(WHITE, a))
+	drawKnob(item, sx, spec.y + th * 0.04, seg_w - th * 0.16, th * 0.78, a)
 	for i, node in ipairs(item.segments) do
 		if i <= n then
 			local color = i == selected and INK or withAlpha(INK, 0.6)
@@ -151,15 +153,17 @@ local function drawControl(item, spec, a)
 		local tw, th = h * 0.95, h * 0.52
 		local tx = spec.x + spec.w / 2 - h * 0.3 - tw / 2
 		item.on = (item.on or 0) + ((spec.value and 1 or 0) - (item.on or 0)) * 0.35
-		placePill(item.track, tx, spec.y, tw, th, withAlpha(TRACK + (ACCENT - TRACK) * item.on, a))
-		drawKnob(item, tx - tw / 2 + th / 2 + item.on * (tw - th), spec.y, th * 0.78, a)
+		placeBar(item.track, tx, spec.y, tw, th, withAlpha(TRACK + (ACCENT - TRACK) * item.on, a))
+		local size = th * 0.72
+		drawKnob(item, tx - tw / 2 + th / 2 + item.on * (tw - th), spec.y + size * LIFT / 2, size, size, a)
 	elseif spec.kind == "slider" then
 		local t = (spec.value - spec.min) / (spec.max - spec.min)
 		local th = h * 0.14
 		local left = spec.track_x
-		placePill(item.track, left + spec.track_w / 2, spec.y, spec.track_w, th, withAlpha(TRACK, a))
-		placePill(item.fill, left + spec.track_w * t / 2, spec.y, spec.track_w * t, th, withAlpha(ACCENT, a))
-		drawKnob(item, left + spec.track_w * t, spec.y, h * 0.4, a)
+		placeBar(item.track, left + spec.track_w / 2, spec.y, spec.track_w, th, withAlpha(TRACK, a))
+		placeBar(item.fill, left + spec.track_w * t / 2, spec.y, spec.track_w * t, th, withAlpha(ACCENT, a))
+		local size = h * 0.44
+		drawKnob(item, left + spec.track_w * t, spec.y + size * LIFT / 2, size * 0.7, size, a, true)
 	end
 end
 
@@ -171,12 +175,11 @@ local function drawItem(item, spec, a)
 	enableItem(item, true, control)
 	item.scale = item.scale + (1 - item.scale) * 0.25
 	local pressed = (1 - item.scale) / (1 - PRESS)
-	local size = LIFT.sink and 1 or item.scale
-	local w, h = spec.w * size, spec.h * size
+	local w, h = spec.w, spec.h
 	local face = spec.primary and PRIMARY or FACE
-	local drop = LIFT.drop * spec.h
-	place(item.shadow, spec.x, spec.y - drop, w * (1 + LIFT.spread * 0.2), h * (1 + LIFT.spread), withAlpha(spec.primary and PRIMARY_SHADOW or SHADOW, a))
-	place(item.face, spec.x, spec.y - (LIFT.sink and drop * pressed or 0), w, h, withAlpha(face, a))
+	local drop = LIFT * spec.h
+	place(item.shadow, spec.x, spec.y - drop, w, h, withAlpha(spec.primary and PRIMARY_SHADOW or SHADOW, a))
+	place(item.face, spec.x, spec.y - drop * pressed, w, h, withAlpha(face, a))
 	drawControl(item, spec, a)
 	local color = spec.primary and PRIMARY_INK or spec.danger and DANGER or INK
 	if control == "tabs" then
@@ -191,10 +194,12 @@ end
 function init(self)
 	gui.set_render_order(8)
 	self.dim = box()
-	self.card_shadow = box(ui.card_shadow, true)
-	self.card = box(ui.card_image, true)
+	self.card_shadow = box("key", true)
+	self.card = box("key", true)
 	self.title = text("title")
 	self.heading = text("title")
+	self.mark = box("mark")
+	self.mark_accent = box("mark_accent")
 	self.items = {}
 	self.shown = 0
 	self.fade = box()
@@ -216,17 +221,22 @@ local function drawFrame(self, layout, a, w, h)
 		writeText(self.title, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a))
 	end
 	gui.set_enabled(self.heading, layout.heading ~= nil)
+	gui.set_enabled(self.mark, layout.heading ~= nil)
+	gui.set_enabled(self.mark_accent, layout.heading ~= nil)
 	if layout.heading then
-		local t = layout.heading
-		writeText(self.heading, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a), t.align == "left" and gui.PIVOT_W or nil)
+		local t, m = layout.heading, layout.heading.mark
+		writeText(self.heading, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a), gui.PIVOT_W)
+		place(self.mark, m.x, m.y, m.w, m.h, withAlpha(INK, a))
+		place(self.mark_accent, m.x, m.y, m.w, m.h, withAlpha(ACCENT, a))
 	end
 end
 
 function update(self, dt)
 	local w, h = window.get_size()
 	local layout = models.layout("panel")
+	local fade = models.layout("fade") or 0
 	local k = 1 - math.exp(-EASE_RATE * dt)
-	self.shown = self.shown + ((layout and 1 or 0) - self.shown) * k
+	self.shown = (fade > 0.95 and not layout) and 0 or self.shown + ((layout and 1 or 0) - self.shown) * k
 	self.last = layout or self.last
 	local pressed = {}
 	for _, id in ipairs(models.takePresses("panel")) do
@@ -246,7 +256,6 @@ function update(self, dt)
 	for i = #specs + 1, #self.items do
 		enableItem(self.items[i], false)
 	end
-	local fade = models.layout("fade") or 0
 	place(self.fade, w / 2, h / 2, w, h, withAlpha(FADE, fade))
 	gui.set_enabled(self.fade, fade > 0.001)
 end

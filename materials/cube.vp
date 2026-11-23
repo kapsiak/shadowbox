@@ -8,7 +8,6 @@ in mediump vec4 edge;
 in mediump float ao;
 
 out highp vec3 var_position;
-out highp vec3 var_local;
 out mediump vec3 var_normal;
 out mediump vec3 var_tangent;
 out mediump vec2 var_uv;
@@ -30,7 +29,6 @@ void main()
 {
     vec4 p = mtx_worldview * vec4(position.xyz, 1.0);
     var_position = p.xyz;
-    var_local = position.xyz;
     var_normal = normalize((mtx_normal * vec4(normal, 0.0)).xyz);
     var_uv = texcoord0;
     var_tangent = normalize((mtx_normal * vec4(tangent, 0.0)).xyz);
