@@ -4,7 +4,7 @@ local history = require "core.history"
 
 local lvl = assert(level.parse({
 	pieces = { A = "coral", B = "sky" },
-	layers = { { "AAB", "..B" }, { "A..", "..." } },
+	layers = { { "AA..", "A.BB" }, { "....", "...." } },
 }))
 local DOWN = { 0, -1, 0 }
 
@@ -17,9 +17,9 @@ end
 describe("play", function()
 	it("places a piece from the tray resting on the floor", function()
 		local s = play.new(lvl)
-		assert.is_true(dragFromTray(s, 2, 2, 0))
+		assert.is_true(dragFromTray(s, 2, 2, 1))
 		local pose = play.current(s).poses[2]
-		assert.same({ 2, 0, 0 }, pose.cell)
+		assert.same({ 2, 0, 1 }, pose.cell)
 	end)
 
 	it("stacks a dragged piece on top of what lies under the pointer", function()
@@ -59,13 +59,13 @@ describe("play", function()
 	it("turns a dragged piece about the grabbed cube's column without committing", function()
 		local s = play.new(lvl)
 		dragFromTray(s, 1, 0, 0)
-		play.grab(s, 1, { 0, 1, 0 }, { 0, 1, 0 })
+		play.grab(s, 1, { 1, 0, 0 }, { 0, 1, 0 })
 		play.turn(s, 3, 1)
 		local display = play.display(s)
 		local cells = require("core.shape").cellsAt(lvl.pieces[1].shape, display.poses[1])
 		local in_column = false
 		for _, c in ipairs(cells) do
-			in_column = in_column or (c[1] == 0 and c[3] == 0)
+			in_column = in_column or (c[1] == 1 and c[3] == 0)
 		end
 		assert.is_true(in_column)
 		assert.is_nil(display.invalid)

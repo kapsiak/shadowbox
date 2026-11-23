@@ -49,6 +49,16 @@ describe("shape", function()
 		local turned = shape.cellsAt(s, { cell = { 5, 5, 5 }, orient = orient.turn(1, 3, 1) })
 		assert.same({ { 5, 4, 5 }, { 5, 5, 5 }, { 5, 6, 5 } }, turned)
 	end)
+
+	it("rests the same however the piece is drawn", function()
+		local standing = { { 0, 0, 0 }, { 0, 1, 0 }, { 0, 2, 0 }, { 1, 2, 0 } }
+		local lying = { { 0, 0, 1 }, { 1, 0, 1 }, { 2, 0, 1 }, { 2, 0, 0 } }
+		local rest = shape.rest(standing)
+		assert.same(rest, shape.rest(lying))
+		for _, c in ipairs(rest) do
+			assert.equal(0, c[2])
+		end
+	end)
 end)
 
 describe("level.parse", function()
@@ -59,6 +69,17 @@ describe("level.parse", function()
 		assert.same({ "light" }, lvl.channels)
 		assert.same({ 0, 0, 0, 0, 7, 7 }, lvl.targets.front.layers.light)
 		assert.same({ 0, 0, 0, 7 }, lvl.targets.side.layers.light)
+	end)
+
+	it("starts pieces at rest and keeps the drawing as the solution", function()
+		local lvl = assert(parse({ { "A." }, { "A." }, { "AA" } }, { A = "coral" }))
+		local piece = lvl.pieces[1]
+		for _, c in ipairs(piece.shape.forms[orient.identity]) do
+			assert.equal(0, c[2] - piece.shape.forms[orient.identity][1][2])
+		end
+		local cells = shape.cellsAt(piece.shape, lvl.solution[1])
+		table.sort(cells, function(a, b) return table.concat(a, ",") < table.concat(b, ",") end)
+		assert.same({ { 0, 0, 0 }, { 0, 1, 0 }, { 0, 2, 0 }, { 1, 2, 0 } }, cells)
 	end)
 
 	it("rejects malformed levels with a reason", function()

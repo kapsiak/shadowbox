@@ -175,10 +175,9 @@ function M.parse(def, name)
 			return nil, err
 		end
 		piece.id = id
-		local anchor
-		piece.shape, anchor = shape.new(cells)
+		piece.shape = shape.new(shape.rest(cells))
 		pieces[id] = piece
-		solution[id] = { cell = anchor, orient = 1 }
+		solution[id] = shape.poseOf(piece.shape, cells)
 		items[id] = { cells = cells, value = piece.value }
 	end
 

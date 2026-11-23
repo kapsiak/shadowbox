@@ -1,15 +1,12 @@
 return {
 	name = "Stairs",
-	pieces = { A = "coral", B = "mint", C = "sky", D = "butter" },
+	pieces = { A = "coral", B = "mint", C = "sky" },
 	layers = {
-		{ "AABB",
-		  "ACCB",
-		  "DDCB" },
-		{ "A...",
-		  "..C.",
-		  "D..." },
-		{ "....",
-		  "....",
-		  "D..." },
+		{ "AAB",
+		  "CCC" },
+		{ ".AB",
+		  "..." },
+		{ "..B",
+		  "..." },
 	},
 }

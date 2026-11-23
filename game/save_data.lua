@@ -28,7 +28,8 @@ end
 
 local fingerprints = setmetatable({}, { __mode = "k" })
 
--- A number that changes whenever the level's size, pieces or arrangement change.
+-- A number that changes whenever the level's size, pieces, arrangement or the frame poses are
+-- measured in (each piece's resting orientation) change.
 function M.fingerprint(level)
 	if fingerprints[level] then
 		return fingerprints[level]
@@ -39,7 +40,9 @@ function M.fingerprint(level)
 		for _, name in ipairs(channels.order) do
 			parts[#parts + 1] = piece.value[name]
 		end
-		for _, c in ipairs(shape.cellsAt(piece.shape, level.solution[id])) do
+		local pose = level.solution[id]
+		parts[#parts + 1] = table.concat(pose.cell, ",") .. "@" .. pose.orient
+		for _, c in ipairs(shape.cellsAt(piece.shape, pose)) do
 			parts[#parts + 1] = table.concat(c, ",")
 		end
 	end
