@@ -1,9 +1,11 @@
--- The level select screen: packs as chapters with their levels on a winding trail, each open
--- level shown as a live 3D thumbnail. Tapping an open level plays it; dragging (with a fling on
--- release) or the wheel scrolls. Implements the screen contract used by main.script.
+-- The level select screen: one chapter (pack) per page, its levels on a winding trail, each
+-- open level shown as a live 3D thumbnail. Tapping an open level plays it; dragging up and down
+-- (with a fling on release) or the wheel scrolls; swiping sideways, the arrow keys beside the
+-- banner, the left and right keys, or a chapter's dot under the title turn the page.
+-- Implements the screen contract used by main.script.
 --
--- The layout is computed once per screen size and published with the scroll offset, so
--- scrolling moves one offset rather than rebuilding the page.
+-- The layout is computed once per screen size and chapter and published with the scroll and
+-- slide offsets, so scrolling moves one offset rather than rebuilding the page.
 local hot = require "core.hot"
 local select_layout = require "ui.select_layout"
 local hit = require "ui.hit"
@@ -25,13 +27,20 @@ local FLING_MIN = 40
 local FLING_HOLD = 0.08
 -- Thumbnails are built this many node sizes before they scroll into view.
 local THUMB_MARGIN = 1.5
+-- A turned page slides in from this fraction of the screen width and settles at SLIDE_RATE; a
+-- swipe turns the page once it has moved TURN_AT of the width.
+local SLIDE_FROM = 0.35
+local SLIDE_RATE = 14
+local TURN_AT = 0.12
+local KEY_STEPS = { orbit_left = -1, orbit_right = 1 }
 
--- boards: the saved boards by level key; pool: the board pool (view/board_pool).
-function M.enter(catalog, saved, boards, pool)
+-- boards: the saved boards by level key; pool: the board pool (view/board_pool); last: the
+-- level last played ({ pack, index }) or nil, whose chapter opens first.
+function M.enter(catalog, saved, boards, pool, last)
 	return {
-		module = M, catalog = catalog, saved = saved, boards = boards,
+		module = M, catalog = catalog, saved = saved, boards = boards, last = last,
 		thumbs = thumbs.new(pool), specs = {}, model = {},
-		clock = 0, velocity = 0, drag_velocity = 0, moved_at = -math.huge,
+		clock = 0, velocity = 0, drag_velocity = 0, moved_at = -math.huge, slide = 0,
 	}
 end
 
@@ -52,16 +61,20 @@ local function clamped(screen, scroll)
 	return math.max(0, math.min(screen.view.max_scroll, scroll))
 end
 
--- Lays out the page when the screen changes; the first layout opens scrolled to the current level.
+-- Lays out the page when the screen or the chapter changes; a chapter opens scrolled to the
+-- current level when it holds it, else to its top.
 function M.layout(screen, info)
 	screen.info = info
-	local key = frameKey(info)
+	screen.chapter = screen.chapter or select_layout.chapterOf(screen.catalog, screen.saved, screen.last, info.settings.open_all)
+	local key = frameKey(info) .. " " .. screen.chapter
 	if key ~= screen.frame then
-		screen.frame = key
-		screen.view = select_layout.compute(info, screen.catalog, screen.saved)
+		local turned = screen.view_chapter ~= screen.chapter
+		screen.frame, screen.view_chapter = key, screen.chapter
+		screen.view = select_layout.compute(info, screen.catalog, screen.saved, screen.chapter)
 		screen.model.layout = screen.view
-		if not screen.scroll then
-			screen.scroll, screen.goal_scroll = screen.view.focus, screen.view.focus
+		screen.specs = {}
+		if turned then
+			screen.scroll, screen.goal_scroll, screen.velocity = screen.view.focus, screen.view.focus, 0
 		end
 		screen.goal_scroll = clamped(screen, screen.goal_scroll)
 	end
@@ -71,37 +84,87 @@ end
 local function backButton(info)
 	local size = math.min(math.max(52 * info.scale, math.min(info.w, info.h) * 0.075), math.min(info.w, info.h) * 0.12)
 	local margin = size * 0.35
-	return { id = "back", x = info.safe.left + margin + size / 2, y = info.h - info.safe.top - margin - size / 2, size = size, group = "corner" }
+	return { id = "back", x = info.safe.left + margin + size / 2, y = info.h - info.safe.top - margin - size / 2, size = size, group = "corner", enabled = true }
 end
 
--- Only the back button is claimed; levels are not, so a drag that starts on one still scrolls.
-function M.hit(screen, x, y)
-	return hit.find({ backButton(screen.info) }, x, y)
+-- The back button and the page's arrow keys, which move with the page.
+local function buttons(screen)
+	local arrows, slide, scroll = screen.view.arrows, screen.slide, screen.scroll
+	local function arrow(id, a, enabled)
+		return { id = id, x = a.x + slide, y = a.y + scroll, size = a.size, group = "corner", enabled = enabled }
+	end
+	return {
+		backButton(screen.info),
+		arrow("page_prev", arrows.prev, screen.chapter > 1),
+		arrow("page_next", arrows.next, screen.chapter < #screen.catalog.packs),
+	}
 end
+
+-- Only the buttons are claimed; levels are not, so a drag that starts on one still scrolls.
+function M.hit(screen, x, y)
+	return hit.find(buttons(screen), x, y)
+end
+
+local button_intents = {
+	back = { kind = "back" }, page_prev = { kind = "chapter", by = -1 }, page_next = { kind = "chapter", by = 1 },
+}
 
 function M.button(screen, ev, intents)
 	if ev.phase == "press" then
 		models.pressed("hud", ev.id)
-		intents[#intents + 1] = { kind = "back" }
+		intents[#intents + 1] = button_intents[ev.id]
+	end
+end
+
+-- The chapter whose dot lies under (x, y), or nil.
+local function markAt(screen, x, y)
+	for _, mark in ipairs(screen.view.marks) do
+		if math.abs(x - mark.x) <= mark.hit / 2 and math.abs(y - screen.scroll - mark.y) <= mark.hit / 2 then
+			return mark.chapter
+		end
+	end
+end
+
+local function onTap(screen, g, intents)
+	if screen.velocity ~= 0 then
+		intents[#intents + 1] = { kind = "grab" }
+		return
+	end
+	local chapter = markAt(screen, g.x, g.y)
+	if chapter then
+		intents[#intents + 1] = { kind = "chapter", to = chapter }
+		return
+	end
+	local id = hit.find(screen.view.nodes, g.x - screen.slide, g.y - screen.scroll)
+	if id then
+		intents[#intents + 1] = { kind = "open", key = id }
+	end
+end
+
+-- A drag follows the axis it first moves along: up and down scrolls, sideways turns the page.
+local function onDragMove(screen, g, intents)
+	screen.drag_axis = screen.drag_axis or (math.abs(g.dx) > math.abs(g.dy) and "x" or "y")
+	if screen.drag_axis == "x" then
+		intents[#intents + 1] = { kind = "swipe", by = g.dx }
+	else
+		intents[#intents + 1] = { kind = "drag", by = g.dy }
 	end
 end
 
 function M.gesture(screen, g, intents)
-	if g.kind == "tap" and g.button == "primary" and screen.velocity ~= 0 then
-		intents[#intents + 1] = { kind = "grab" }
-	elseif g.kind == "tap" and g.button == "primary" then
-		local id = hit.find(screen.view.nodes, g.x, g.y - screen.scroll)
-		if id then
-			intents[#intents + 1] = { kind = "open", key = id }
-		end
+	if g.kind == "tap" and g.button == "primary" then
+		onTap(screen, g, intents)
 	elseif g.kind == "drag_start" then
+		screen.drag_axis = nil
 		intents[#intents + 1] = { kind = "grab" }
 	elseif g.kind == "drag_move" and not g.multi then
-		intents[#intents + 1] = { kind = "drag", by = g.dy }
+		onDragMove(screen, g, intents)
 	elseif g.kind == "drag_end" then
 		intents[#intents + 1] = { kind = "release" }
 	elseif g.kind == "key" and g.pressed and g.name == "menu" then
 		intents[#intents + 1] = { kind = "back" }
+	elseif g.kind == "key" and g.pressed and KEY_STEPS[g.name] then
+		intents[#intents + 1] = { kind = "chapter", by = KEY_STEPS[g.name] }
 	elseif g.kind == "wheel" then
 		intents[#intents + 1] = { kind = "wheel", by = -g.amount * screen.info.h * WHEEL_STEP }
 	end
@@ -116,6 +179,18 @@ local function openLevel(screen, key)
 	end
 end
 
+-- Turns to `chapter` if it exists and differs; the new page slides in from the side it lies on.
+local function turnTo(screen, chapter)
+	if chapter == screen.chapter or not screen.catalog.packs[chapter] then
+		return false
+	end
+	local dir = chapter > screen.chapter and 1 or -1
+	screen.chapter = chapter
+	screen.slide = screen.info.settings.reduced_motion and 0 or dir * screen.info.w * SLIDE_FROM
+	audio.cue("ui_tap")
+	return true
+end
+
 -- Applies one intent; returns a request for the app (see main.script) or nil.
 function M.apply(screen, intent, dt)
 	local kind = intent.kind
@@ -123,6 +198,18 @@ function M.apply(screen, intent, dt)
 		return { to = "menu" }
 	elseif kind == "open" then
 		return openLevel(screen, intent.key)
+	elseif kind == "chapter" then
+		turnTo(screen, intent.to or screen.chapter + intent.by)
+	elseif kind == "swipe" then
+		local edge = (screen.chapter == 1 and intent.by > 0) or (screen.chapter == #screen.catalog.packs and intent.by < 0)
+		screen.slide = screen.slide + intent.by * (edge and 0.3 or 1)
+		screen.swiping = true
+	elseif kind == "release" and screen.swiping then
+		screen.swiping = false
+		local limit = screen.info.w * TURN_AT
+		if math.abs(screen.slide) > limit then
+			turnTo(screen, screen.chapter + (screen.slide < 0 and 1 or -1))
+		end
 	elseif kind == "grab" then
 		screen.velocity, screen.drag_velocity = 0, 0
 	elseif kind == "drag" then
@@ -160,15 +247,15 @@ local function thumbPoses(saved, level, state)
 	return saved or {}
 end
 
--- The thumbnail of `node`, made once per screen; only its position follows the scroll.
+-- The thumbnail of `node`, made once per layout; only its position follows the scroll.
 local function thumbSpec(screen, node)
 	local spec = screen.specs[node.id]
 	if not spec then
 		local level = screen.catalog.packs[node.pack].levels[node.index]
-		spec = { id = node.id, level = level, poses = thumbPoses(screen.boards[node.id], level, node.state), number = node.index, x = node.x, size = node.size }
+		spec = { id = node.id, level = level, poses = thumbPoses(screen.boards[node.id], level, node.state), number = node.index, size = node.size }
 		screen.specs[node.id] = spec
 	end
-	spec.y = node.y + node.size * 0.08 + screen.scroll
+	spec.x, spec.y = node.x + screen.slide, node.y + node.size * 0.08 + screen.scroll
 	return spec
 end
 
@@ -188,11 +275,15 @@ function M.present(screen, dt, info)
 	M.layout(screen, info)
 	fling(screen, dt)
 	screen.scroll = screen.scroll + (screen.goal_scroll - screen.scroll) * (1 - math.exp(-SCROLL_RATE * dt))
+	if not screen.swiping then
+		screen.slide = screen.slide * math.exp(-SLIDE_RATE * dt)
+		screen.slide = math.abs(screen.slide) < 0.5 and 0 or screen.slide
+	end
 	local eye_from = cameras.setScreen("board", info.w, info.h, FOV)
 	thumbs.present(screen.thumbs, thumbSpecs(screen, info.h), dt, eye_from, info.settings)
-	screen.model.scroll = screen.scroll
+	screen.model.scroll, screen.model.slide = screen.scroll, screen.slide
 	models.publish("select", screen.model)
-	models.publish("hud", { buttons = { backButton(info) }, labels = {} })
+	models.publish("hud", { buttons = buttons(screen), labels = {} })
 end
 
 return hot(..., M)

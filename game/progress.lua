@@ -48,19 +48,20 @@ function M.solvedCount(progress, pack)
 	return n
 end
 
-function M.isPackOpen(progress, catalog, pack_index)
-	if pack_index == 1 then
+-- open_all (a player setting) opens every pack and level.
+function M.isPackOpen(progress, catalog, pack_index, open_all)
+	if open_all or pack_index == 1 then
 		return true
 	end
 	local previous = catalog.packs[pack_index - 1]
 	return M.solvedCount(progress, previous) >= math.ceil(#previous.keys * PACK_THRESHOLD)
 end
 
-function M.isOpen(progress, catalog, pack_index, level_index)
-	if not M.isPackOpen(progress, catalog, pack_index) then
+function M.isOpen(progress, catalog, pack_index, level_index, open_all)
+	if not M.isPackOpen(progress, catalog, pack_index, open_all) then
 		return false
 	end
-	if level_index <= OPEN_AT_START then
+	if open_all or level_index <= OPEN_AT_START then
 		return true
 	end
 	local keys = catalog.packs[pack_index].keys
@@ -73,11 +74,11 @@ function M.isOpen(progress, catalog, pack_index, level_index)
 end
 
 -- The next open level after (pack_index, level_index), or nil at the end of the catalog.
-function M.next(progress, catalog, pack_index, level_index)
+function M.next(progress, catalog, pack_index, level_index, open_all)
 	local p, l = pack_index, level_index + 1
 	while catalog.packs[p] do
 		if catalog.packs[p].keys[l] then
-			if M.isOpen(progress, catalog, p, l) and not M.isSolved(progress, catalog.packs[p].keys[l]) then
+			if M.isOpen(progress, catalog, p, l, open_all) and not M.isSolved(progress, catalog.packs[p].keys[l]) then
 				return p, l
 			end
 			l = l + 1

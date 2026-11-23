@@ -27,11 +27,36 @@ local function totals(lvl, report)
 	return cubes, cands / #report.pieces
 end
 
+-- Arithmetic a level asks of its count walls: the largest number shown and the share of
+-- shown cells holding 2 or more. Nil without count walls.
+local function countLoad(lvl)
+	local top, shown, stacked = 0, 0, 0
+	for _, v in ipairs(lvl.views) do
+		local layer = lvl.walls[v] == "count" and lvl.targets[v].layers.count or {}
+		for _, n in ipairs(layer) do
+			top = math.max(top, n)
+			shown = shown + (n > 0 and 1 or 0)
+			stacked = stacked + (n > 1 and 1 or 0)
+		end
+	end
+	if shown > 0 then
+		return top, stacked / shown
+	end
+end
+
+local function loadText(lvl)
+	local top, share = countLoad(lvl)
+	return top and ("max %d, %d%% stacked"):format(top, share * 100 + 0.5) or "-"
+end
+
 local function printDetail(path, lvl, report, seconds)
 	local s = lvl.size
 	print(("%s  (%s)  %dx%dx%d  views: %s%s"):format(lvl.name, path, s[1], s[2], s[3],
 		table.concat(lvl.views, " "), lvl.rules.use_all and "" or "  spares allowed"))
 	print(("  solutions %s   nodes %d   %.2fs"):format(count(report), report.nodes, seconds))
+	if countLoad(lvl) then
+		print("  counts " .. loadText(lvl))
+	end
 	for _, p in ipairs(report.pieces) do
 		local notes = p.chiral and (p.mirror_of and "mirror of " .. p.mirror_of or "chiral") or ""
 		notes = p.must_turn and notes .. " must turn" or notes
@@ -60,8 +85,8 @@ local function printDetail(path, lvl, report, seconds)
 	print()
 end
 
-local header = ("%-18s %-7s %6s %5s %6s %5s %9s %8s %6s"):format(
-	"level", "size", "pieces", "cubes", "views", "turns", "solutions", "avg cand", "nodes")
+local header = ("%-18s %-7s %6s %5s %6s %5s %9s %8s %6s  %s"):format(
+	"level", "size", "pieces", "cubes", "views", "turns", "solutions", "avg cand", "nodes", "counts")
 
 local function printSummary(lvl, report)
 	local s = lvl.size
@@ -70,9 +95,9 @@ local function printSummary(lvl, report)
 	for _, p in ipairs(report.pieces) do
 		turns = turns + (p.must_turn and 1 or 0)
 	end
-	print(("%-18s %-7s %6d %5d %6d %5d %9s %8.1f %6d"):format(lvl.name:sub(1, 18),
+	print(("%-18s %-7s %6d %5d %6d %5d %9s %8.1f %6d  %s"):format(lvl.name:sub(1, 18),
 		("%dx%dx%d"):format(s[1], s[2], s[3]), #lvl.pieces, cubes, #lvl.views, turns, count(report),
-		avg, report.nodes))
+		avg, report.nodes, loadText(lvl)))
 end
 
 local summary, limit, paths = false, 1000, {}

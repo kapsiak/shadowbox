@@ -1,0 +1,20 @@
+return {
+	name = "Domesday",
+	views = { "front", "side", "top" },
+	walls = { front = "count", side = "count", top = "count" },
+	pieces = { A = "coral", B = "sky", C = "mint", D = "butter", E = "lilac" },
+	layers = {
+		{ "EEEB",
+		  "DEEB",
+		  "DDAA" },
+		{ "CC..",
+		  "D..B",
+		  "..AA" },
+		{ "C...",
+		  "...B",
+		  "..A." },
+		{ "C...",
+		  "....",
+		  "...." },
+	},
+}

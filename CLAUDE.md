@@ -47,8 +47,9 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
   for the whole run: runtime resources are rewritten in place, never released, since released
   ones were not freed), `tray_view`, `thumbs` (live level thumbnails, built a few per frame), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
   `theme` (**all colours and lighting: restyle here**), `palette`.
-- `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout` (computed once per screen size;
-  scroll is one offset on the GUI root), `sheets` content), `models`
+- `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout` (one chapter per page,
+  computed once per screen size and chapter; scroll and the sideways slide are offsets on the GUI
+  roots, nodes pooled by slot), `sheets` content), `models`
   (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
 - `render/game.render_script`: background → `gui_back` (select screen) → board (panels, cubes,
   glass blended over them) → tray → optional
@@ -68,8 +69,13 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 snake_case variables, camelCase functions, comments only where needed, Lua 5.1/LuaJIT.
 GUI scripts only draw what `ui/models` publishes; input decisions happen in `main` phases.
 Never commit or modify git; the user does that.
+Budgets: check resource use against engine limits whenever content or UI grows. Known limits:
+font batches 128 (text nodes batch only when adjacent in draw order, so GUIs put text on their
+own layers, as `ui/select.gui` does), GUI `max_nodes` (select 512, about 300 used: one chapter
+plus a dot per pack; hud and panel 256), `max_count` 512
+game objects, wall textures 8x8, runtime resources never freed (reuse through pools).
 
-## Status (seventh session, paused before ray inspection)
+## Status (eighth session)
 Done: core model, rendering, camera (ortho snaps), drag by contact placement, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -132,18 +138,25 @@ rebindable keys (Settings > Keys, saved as changes only), hover tooltips on HUD 
 Playing card worded for touch or desktop. Hot reload works for outside edits (`tools/hot_reload.sh`,
 `core/hot`). Tray pieces are sized by their bounding sphere (they overflowed the tray).
 
-Temporary: `levels/index.lua` starts with a test pack `counting` (`test_count`, `test_parity`) that
-shows Basics as locked; replace it with the real Counting pack.
+Eighth session: three packs after Glass, each level checked to have fewer solutions than the
+same drawing with plain shadows (so its rule matters). Counting (20): 1-8 count on the front only,
+9-20 on both walls, counts at most 3. Parity (20, accent rose): 1-2 two views, then a shadow
+floor is added (two parity walls alone stay loose), parity on the front, then on both walls.
+Ledger (20, accent sage): harder counting, numbers to 4, up to six pieces, a counting floor in
+the last five. `tools/solve.lua` reports count load (largest number, share of cells showing 2+);
+`tools/solver.lua` can keep found solutions. Level select: chapter pages (arrows, swipe,
+left/right keys, a dot per chapter under the title), opening on the last played level's
+chapter; the select's text batches by layer. Settings > Game: Open all levels.
+Next: play-test the three packs.
 
 Next, in order:
-1. Ray inspection (`docs/mechanics.md`): hold or hover a wall cell to light its ray's cubes and
-   label the fold (blocked, colour mix, 1 + 1 = 2, odd); with it, a mark on non-light walls that
-   opens the wall's rule card when tapped.
-2. Counting pack (~20) then Parity pack (~20), carved and profiled; first levels isolate the
-   rule. Parity likely needs small boards or a third view to stay unique. Then Patterns (draw the
-   pattern channel), Spares, mixed packs (colour + count walls, sum walls), an authoring guide.
-3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
-4. Web/mobile builds and touch testing.
+1. Patterns (draw the pattern channel), Spares, mixed packs (colour + count walls, sum walls),
+   an authoring guide (carve, solve, the "rule matters" check).
+2. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
+3. Web/mobile builds and touch testing.
+Deferred until play-testing of glass, count and parity asks for it: ray inspection
+(`docs/mechanics.md`; pick a wall cell, light its ray's cubes, label the fold) and the wall
+mark that opens a wall's rule card.
 Art polish is done for now; motion only if play-testing asks for it.
 
 To judge in play: count/parity wall readability (too many vs too few look alike; is parity's
@@ -151,8 +164,6 @@ ring enough), tooltips, keycap contrast and which cap is which in pairs, the fir
 flow and the HUD "?" key (the user's save has seen every card), the Keys tab on mobile web
 (HTML5 always counts as having a keyboard).
 
-Untested or known: the level select still feels a little laggy (after the board pool, staggered
-thumbnail builds and the static layout; profile before changing more; chapter pages are the agreed
-next option); touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
+Untested or known: the level select's lag (chapter pages now build at most one chapter's thumbnails; judge again); touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
 save on focus loss and quit, key press sinking, stacked glass (blending depends on draw order);
 the editor linter shows stale warnings (e.g. `board_view.present` arity, `.axis` field).

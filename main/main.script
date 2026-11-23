@@ -110,9 +110,9 @@ local function continueTarget(self)
 		if not progress.isSolved(self.saved, self.catalog.packs[last.pack].keys[last.index]) then
 			return last.pack, last.index
 		end
-		return progress.next(self.saved, self.catalog, last.pack, last.index)
+		return progress.next(self.saved, self.catalog, last.pack, last.index, self.settings.open_all)
 	end
-	return progress.next(self.saved, self.catalog, 1, 0)
+	return progress.next(self.saved, self.catalog, 1, 0, self.settings.open_all)
 end
 
 local function changeScreen(self, request)
@@ -124,17 +124,17 @@ local function changeScreen(self, request)
 	elseif to == "next" or to == "continue" then
 		local p, l
 		if to == "next" then
-			p, l = progress.next(self.saved, self.catalog, self.last.pack, self.last.index)
+			p, l = progress.next(self.saved, self.catalog, self.last.pack, self.last.index, self.settings.open_all)
 		else
 			p, l = continueTarget(self)
 		end
 		if p then
 			openLevel(self, p, l)
 		else
-			switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool))
+			switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool, self.last))
 		end
 	elseif to == "select" then
-		switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool))
+		switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool, self.last))
 	end
 end
 

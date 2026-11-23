@@ -128,6 +128,7 @@ local tab_items = {
 			slider("sensitivity", "Camera speed", prefs),
 			toggle("invert", "Invert camera", prefs),
 			toggle("left_handed", "Left-handed", prefs),
+			toggle("open_all", "Open all levels", prefs),
 			{ id = "reset_progress", kind = "button", label = "Reset progress", danger = true },
 		}
 	end,

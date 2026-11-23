@@ -12,5 +12,14 @@ textures {
   texture: "/ui/hud.atlas"
 }
 material: "/materials/gui_back.material"
+layers {
+  name: "shapes"
+}
+layers {
+  name: "body"
+}
+layers {
+  name: "title"
+}
 adjust_reference: ADJUST_REFERENCE_DISABLED
-max_nodes: 2048
+max_nodes: 512

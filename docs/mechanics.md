@@ -75,8 +75,9 @@ The first prototype's walls were hard to read. Status of the diagnosis:
   any piece. (Keeping glass off the panels with a stencil was tried and dropped: its colour
   became too hard to see.)
 - Done: neutral screens (geometric look), so received light shows its true colour.
-- Open: nothing links a wall cell to the cubes on its ray. Next: ray inspection on hover
-  (highlight the ray's cubes, show the fold).
+- Open: nothing links a wall cell to the cubes on its ray (a selected piece outlines its cast,
+  the other direction is missing). Ray inspection (highlight the ray's cubes, show the fold) is
+  deferred until play-testing shows players need it.
 - Open: stacked glass depends on draw order on screen (the walls show the true mix).
 
 Teaching: one filter per ray before mixing.

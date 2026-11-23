@@ -1,5 +1,6 @@
 -- Exhaustive search over a level's arrangements: every placement of every piece that the
 -- walls allow, and every combination of them that the rules accept. Pure Lua on core.
+-- options: { limit = solutions to stop at, keep = how many solutions to return in `found` }.
 local orient = require "core.orient"
 local shape = require "core.shape"
 local grid = require "core.grid"
@@ -292,7 +293,7 @@ function M.analyse(level, options)
 		ray_cover[r] = 0
 	end
 	local chosen, last_in_group, done = {}, {}, {}
-	local report = { solutions = 0, nodes = 0, capped = false, placements = {}, rested = {} }
+	local report = { solutions = 0, nodes = 0, capped = false, placements = {}, rested = {}, found = {} }
 	for id in ipairs(info) do
 		report.placements[id] = {}
 	end
@@ -331,6 +332,9 @@ function M.analyse(level, options)
 			return
 		end
 		report.solutions = report.solutions + 1
+		if options and options.keep and #report.found < options.keep then
+			report.found[#report.found + 1] = poses
+		end
 		for id, i in pairs(chosen) do
 			local cand = i and info[id].candidates[i]
 			report.placements[id][cand and cand.key or "-"] = true

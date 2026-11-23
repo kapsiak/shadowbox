@@ -175,6 +175,15 @@ def back_arrow():
     save(img, "back")
 
 
+def chevron(name, mirror=False):
+    """A chevron pointing right, or left when mirrored: turns a page."""
+    img, d = canvas()
+    line(d, [(38, 24), (62, 48), (38, 72)], width=9)
+    if mirror:
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+    save(img, name)
+
+
 def check():
     img, d = canvas()
     line(d, [(22, 50), (40, 68), (74, 30)], width=9)
@@ -256,6 +265,8 @@ def main():
     rules()
     next_arrow()
     back_arrow()
+    chevron("page_next")
+    chevron("page_prev", mirror=True)
     check()
     lock()
     dot()

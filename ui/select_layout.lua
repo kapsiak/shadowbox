@@ -1,6 +1,6 @@
--- The level select screen: each pack is a chapter, a banner followed by its levels on a trail
--- that switches back and forth across rows, scrolled vertically. Pure: positions are window
--- pixels with the origin at the bottom left.
+-- The level select screen: one chapter (pack) per page, a banner followed by its levels on a
+-- trail that switches back and forth across rows, scrolled vertically; a row of dots under the
+-- title shows every chapter. Pure: positions are window pixels with the origin at the bottom left.
 local hot = require "core.hot"
 local progress = require "game.progress"
 
@@ -59,81 +59,98 @@ local function trailCurve(from, to, node)
 	end
 end
 
-local function levelState(saved, catalog, p, l)
+local function levelState(saved, catalog, p, l, open_all)
 	local key = catalog.packs[p].keys[l]
-	return progress.isSolved(saved, key) and "solved" or progress.isOpen(saved, catalog, p, l) and "open" or "locked"
+	return progress.isSolved(saved, key) and "solved" or progress.isOpen(saved, catalog, p, l, open_all) and "open" or "locked"
 end
 
--- screen: { w, h, scale, safe, settings }. Positions are in screen pixels with nothing
--- scrolled; scrolling down by s moves everything up by s.
--- Returns { title, pages, banners, nodes, trail, calm, max_scroll, focus }, where each chapter
--- sits on a page { id, x, y, w, h } (centre and size) and focus is the scroll that brings the
--- current level (the next one to play) to the middle of the screen.
-function M.compute(screen, catalog, saved)
+-- One chapter's page. screen: { w, h, scale, safe, settings }; chapter: the pack index shown.
+-- Positions are in screen pixels with nothing scrolled; scrolling down by s moves everything up
+-- by s. Returns { title, marks, page, banner, arrows, nodes, trail, calm, max_scroll, focus }:
+-- marks are the chapters as a row of dots under the title ({ x, y, size, chapter, current,
+-- enabled }), arrows the prev and next keys beside the banner ({ x, y, size }), page the
+-- chapter's sheet { x, y, w, h } (centre and size), and focus the scroll that brings the
+-- current level (the next one to play) to the middle of the screen, or 0 if it lies elsewhere.
+function M.compute(screen, catalog, saved, chapter)
 	local w, h, safe = screen.w, screen.h, screen.safe
 	local short = math.min(w, h)
 	local margin = math.max(short * 0.04, 16 * screen.scale) + math.max(safe.left, safe.right)
 	local node = math.min(math.max(NODE_DP * screen.scale, short * 0.17), short * 0.28)
+	local pack = catalog.packs[chapter]
 	local usable = w - 2 * (margin + node * (TURN + 0.1))
-	local longest = 1
-	for _, pack in ipairs(catalog.packs) do
-		longest = math.max(longest, #pack.keys)
-	end
-	local columns = math.max(2, math.min(MAX_COLUMNS, longest, math.floor(usable / (node * CELL))))
+	local columns = math.max(2, math.min(MAX_COLUMNS, #pack.keys, math.floor(usable / (node * CELL))))
 	local cell = math.min(usable / columns, node * CELL * 1.3)
 	local cx = w / 2
 	local left = cx - cell * columns / 2
-	local cur_p, cur_l = progress.next(saved, catalog, 1, 0)
+	local open_all = screen.settings and screen.settings.open_all
+	local cur_p, cur_l = progress.next(saved, catalog, 1, 0, open_all)
 
 	local title_size = math.min(short * 0.06, 34 * screen.scale)
 	local y = h - safe.top - margin - title_size * 0.6
 	local layout = {
 		title = { text = "Levels", x = cx, y = y, size = title_size },
-		pages = {}, banners = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
+		marks = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
 	}
-	local focus_y
-	y = y - title_size * 2
+	y = y - title_size * 1.25
+	local mark_gap = math.min(title_size * 0.9, (w - 2 * margin) / #catalog.packs)
+	for p = 1, #catalog.packs do
+		layout.marks[p] = {
+			chapter = p, current = p == chapter, enabled = progress.isPackOpen(saved, catalog, p, open_all),
+			x = cx + (p - (#catalog.packs + 1) / 2) * mark_gap, y = y, size = title_size * 0.32, hit = mark_gap,
+			accent = catalog.packs[p].accent,
+		}
+	end
+	y = y - title_size * 1.6
 
 	local page_w = math.min(w - margin, cell * columns + 2 * node * (GAP + TURN + 0.2))
-	for p, pack in ipairs(catalog.packs) do
-		local open_pack = progress.isPackOpen(saved, catalog, p)
-		local page_top = y + title_size * 1.1
-		layout.banners[#layout.banners + 1] = {
-			id = pack.id, x = cx, y = y, size = title_size * 0.8, accent = pack.accent,
-			text = pack.title, intro = open_pack and pack.intro or "Locked",
-			detail = ("%d / %d"):format(progress.solvedCount(saved, pack), #pack.keys),
-			enabled = open_pack,
+	local open_pack = progress.isPackOpen(saved, catalog, chapter, open_all)
+	local page_top = y + title_size * 1.1
+	layout.banner = {
+		x = cx, y = y, size = title_size * 0.8, accent = pack.accent,
+		text = pack.title, intro = open_pack and pack.intro or "Locked",
+		detail = ("%d / %d"):format(progress.solvedCount(saved, pack), #pack.keys),
+		enabled = open_pack,
+	}
+	local arrow = title_size * 1.5
+	local arrow_x = page_w / 2 - arrow * 0.9
+	layout.arrows = {
+		prev = { x = cx - arrow_x, y = y - title_size * 0.3, size = arrow },
+		next = { x = cx + arrow_x, y = y - title_size * 0.3, size = arrow },
+	}
+	local top = y - title_size * 1.6 - node * 0.75
+	local previous, focus_y
+	for l, key in ipairs(pack.keys) do
+		local row, column = math.floor((l - 1) / columns), (l - 1) % columns
+		local reversed = row % 2 == 1
+		local state = levelState(saved, catalog, chapter, l, open_all)
+		local spec = {
+			id = key, pack = chapter, index = l, name = pack.levels[l].name, state = state,
+			current = chapter == cur_p and l == cur_l, accent = pack.accent, enabled = state ~= "locked",
+			x = left + cell * ((reversed and columns - 1 - column or column) + 0.5),
+			y = top - row * node * ROW, size = node, side = reversed and -1 or 1,
 		}
-		local top = y - title_size * 1.6 - node * 0.75
-		local previous
-		for l, key in ipairs(pack.keys) do
-			local row, column = math.floor((l - 1) / columns), (l - 1) % columns
-			local reversed = row % 2 == 1
-			local state = levelState(saved, catalog, p, l)
-			local spec = {
-				id = key, pack = p, index = l, name = pack.levels[l].name, state = state,
-				current = p == cur_p and l == cur_l, accent = pack.accent, enabled = state ~= "locked",
-				x = left + cell * ((reversed and columns - 1 - column or column) + 0.5),
-				y = top - row * node * ROW, size = node, side = reversed and -1 or 1,
-			}
-			layout.nodes[#layout.nodes + 1] = spec
-			if previous then
-				trailDots(layout.trail, trailCurve(previous, spec, node), node, pack.accent, previous.state == "solved")
-			end
-			if spec.current then
-				focus_y = spec.y
-			end
-			previous = spec
+		layout.nodes[#layout.nodes + 1] = spec
+		if previous then
+			trailDots(layout.trail, trailCurve(previous, spec, node), node, pack.accent, previous.state == "solved")
 		end
-		local page_bottom = previous.y - node * 0.75 - title_size * 0.2
-		layout.pages[#layout.pages + 1] = {
-			id = pack.id, x = cx, y = (page_top + page_bottom) / 2, w = page_w, h = page_top - page_bottom,
-		}
-		y = previous.y - node * 0.75 - title_size * 1.8
+		if spec.current then
+			focus_y = spec.y
+		end
+		previous = spec
 	end
-	layout.max_scroll = math.max(0, safe.bottom + margin - y)
+	local page_bottom = previous.y - node * 0.75 - title_size * 0.2
+	layout.page = { x = cx, y = (page_top + page_bottom) / 2, w = page_w, h = page_top - page_bottom }
+	layout.max_scroll = math.max(0, safe.bottom + margin - page_bottom)
 	layout.focus = focus_y and math.max(0, math.min(layout.max_scroll, h * FOCUS_HEIGHT - focus_y)) or 0
 	return layout
+end
+
+-- The chapter holding level (pack, index), or else the current level's.
+function M.chapterOf(catalog, saved, last, open_all)
+	if last and catalog.packs[last.pack] then
+		return last.pack
+	end
+	return progress.next(saved, catalog, 1, 0, open_all) or 1
 end
 
 return hot(..., M)

@@ -10,6 +10,7 @@ M.defaults = {
 	sensitivity = 1.0,
 	invert = false,
 	left_handed = false,
+	open_all = false,
 	reduced_motion = false,
 	patterns = false,
 	high_contrast = false,

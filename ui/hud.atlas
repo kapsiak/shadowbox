@@ -32,6 +32,12 @@ images {
   image: "/ui/icons/next.png"
 }
 images {
+  image: "/ui/icons/page_next.png"
+}
+images {
+  image: "/ui/icons/page_prev.png"
+}
+images {
   image: "/ui/icons/redo.png"
 }
 images {

@@ -2,5 +2,5 @@ return {
 	title = "Counting",
 	intro = "Walls that count.",
 	accent = "butter",
-	levels = { "test_count", "test_parity" },
+	levels = { "tally", "pair", "pallet", "barrow", "cartons", "rack", "bricks", "coins", "hoard", "depot", "cellar", "bushel", "larder", "pantry", "bundle", "hamper", "sacks", "strongbox", "tithe", "haystack" },
 }

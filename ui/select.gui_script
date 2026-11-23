@@ -1,8 +1,11 @@
--- Draws the level select published in ui/models ("select": { layout, scroll }): a page per
--- chapter with its banner and trail, and under each level a plinth, its label and a badge.
--- Drawn beneath the 3D thumbnails (gui_back material), which sit on the plinths. Every node
--- hangs from one root that carries the scroll, so the page is redrawn only when the layout or
--- the fade changes.
+-- Draws the level select published in ui/models ("select": { layout, scroll, slide }): the
+-- title and a dot per chapter, then one chapter's page with its banner and trail, and under
+-- each level a plinth, its label and a badge. Drawn beneath the 3D thumbnails (gui_back
+-- material), which sit on the plinths. The header hangs from one root that carries the scroll
+-- and the page from another that also carries the sideways slide, so the page is redrawn only
+-- when the layout or the fade changes. Nodes are pooled by slot, so their number is bounded by
+-- the largest chapter. Shapes, body text and titles sit on their own layers (in that order), so
+-- the text batches into a draw per font; the roots are disabled once the page has faded out.
 local models = require "ui.models"
 
 local theme = require "view.theme"
@@ -31,11 +34,12 @@ local function accentOf(name)
 	return accents[name]
 end
 
-local root
+local root, head
 
-local function box(image, sliced)
+local function box(image, sliced, parent)
 	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
-	gui.set_parent(node, root)
+	gui.set_parent(node, parent or root)
+	gui.set_layer(node, "shapes")
 	gui.set_texture(node, "hud")
 	gui.play_flipbook(node, image)
 	if sliced then
@@ -44,9 +48,10 @@ local function box(image, sliced)
 	return node
 end
 
-local function text(font)
+local function text(font, parent)
 	local node = gui.new_text_node(vmath.vector3(), "")
-	gui.set_parent(node, root)
+	gui.set_parent(node, parent or root)
+	gui.set_layer(node, font)
 	gui.set_font(node, font)
 	return node
 end
@@ -118,20 +123,30 @@ local function drawNode(n, spec, alpha)
 	end
 end
 
-local function banner(self, id)
-	self.banners[id] = self.banners[id] or { rule = box("dot"), title = text("title"), detail = text("body"), intro = text("body") }
-	return self.banners[id]
+-- Slot i of a pool, made by `make` on first use; slots past `count` are disabled.
+local function pooled(pool, count, make)
+	for i = #pool + 1, count do
+		pool[i] = make()
+	end
+	for i = 1, #pool do
+		local parts = pool[i]
+		for _, node in pairs(type(parts) == "table" and parts or { parts }) do
+			gui.set_enabled(node, i <= count)
+		end
+	end
+	return pool
 end
 
--- Pages go beneath everything else on the screen (the title is the first node created).
-local function page(self, id)
-	if not self.pages[id] then
-		local p = { shadow = box("key", true), sheet = box("key", true) }
-		gui.move_below(p.shadow, self.title)
-		gui.move_below(p.sheet, self.title)
-		self.pages[id] = p
-	end
-	return self.pages[id]
+local function newNode()
+	return { halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check") }
+end
+
+local function newDot()
+	return box("dot")
+end
+
+local function newMark()
+	return box("dot", false, head)
 end
 
 local function drawPage(p, spec, alpha)
@@ -139,41 +154,34 @@ local function drawPage(p, spec, alpha)
 	place(p.sheet, spec.x, spec.y, spec.w, spec.h, withAlpha(PAGE, alpha))
 end
 
-local function levelNode(self, id)
-	self.nodes[id] = self.nodes[id] or {
-		halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check"),
-	}
-	return self.nodes[id]
-end
-
-local function drawTrail(self, trail, alpha)
-	for i, dot in ipairs(trail) do
-		self.dots[i] = self.dots[i] or box("dot")
-		gui.set_enabled(self.dots[i], true)
-		place(self.dots[i], dot.x, dot.y, dot.size, dot.size, withAlpha(accentOf(dot.accent), alpha * (dot.lit and 1 or 0.35)))
-	end
-	for i = #trail + 1, #self.dots do
-		gui.set_enabled(self.dots[i], false)
-	end
+-- A chapter's dot: in its accent where it is open, larger for the chapter shown.
+local function drawMark(node, spec, alpha)
+	local size = spec.size * (spec.current and 1.5 or 1)
+	local color = spec.enabled and accentOf(spec.accent) or LOCKED
+	place(node, spec.x, spec.y, size, size, withAlpha(color, alpha * (spec.current and 1 or 0.6)))
 end
 
 local function draw(self, layout, alpha)
 	gui.set_screen_position(root, vmath.vector3())
+	gui.set_screen_position(head, vmath.vector3())
 	local title = layout.title
 	setText(self.title, "title", title.text, title.x, title.y, title.size, withAlpha(INK, alpha))
-	for _, spec in ipairs(layout.pages) do
-		drawPage(page(self, spec.id), spec, alpha)
+	local marks = pooled(self.marks, #layout.marks, newMark)
+	for i, spec in ipairs(layout.marks) do
+		drawMark(marks[i], spec, alpha)
 	end
-	drawTrail(self, layout.trail, alpha)
-	for _, spec in ipairs(layout.banners) do
-		drawBanner(banner(self, spec.id), spec, alpha)
+	drawPage(self.page, layout.page, alpha)
+	drawBanner(self.banner, layout.banner, alpha)
+	local dots = pooled(self.dots, #layout.trail, newDot)
+	for i, dot in ipairs(layout.trail) do
+		place(dots[i], dot.x, dot.y, dot.size, dot.size, withAlpha(accentOf(dot.accent), alpha * (dot.lit and 1 or 0.35)))
 	end
+	local nodes = pooled(self.nodes, #layout.nodes, newNode)
 	self.current = nil
-	for _, spec in ipairs(layout.nodes) do
-		local n = levelNode(self, spec.id)
-		drawNode(n, spec, alpha)
+	for i, spec in ipairs(layout.nodes) do
+		drawNode(nodes[i], spec, alpha)
 		if spec.current then
-			self.current = { halo = n.halo, spec = spec }
+			self.current = { halo = nodes[i].halo, spec = spec }
 		end
 	end
 	self.drawn, self.drawn_alpha = layout, alpha
@@ -181,9 +189,13 @@ end
 
 function init(self)
 	root = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	head = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_visible(root, false)
-	self.nodes, self.banners, self.dots, self.pages, self.shown, self.time = {}, {}, {}, {}, 0, 0
-	self.title = text("title")
+	gui.set_visible(head, false)
+	self.nodes, self.dots, self.marks, self.shown, self.time = {}, {}, {}, 0, 0
+	self.page = { shadow = box("key", true), sheet = box("key", true) }
+	self.title = text("title", head)
+	self.banner = { rule = box("dot"), title = text("title"), detail = text("body"), intro = text("body") }
 end
 
 function update(self, dt)
@@ -191,14 +203,18 @@ function update(self, dt)
 	self.time = self.time + dt
 	self.shown = self.shown + ((model and 1 or 0) - self.shown) * (1 - math.exp(-FADE_RATE * dt))
 	self.last = model or self.last
-	if not self.last then
+	local shown = model ~= nil or self.shown > 0.01
+	gui.set_enabled(root, shown)
+	gui.set_enabled(head, shown)
+	if not self.last or not shown then
 		return
 	end
 	local layout, alpha = self.last.layout, self.shown
 	if layout ~= self.drawn or math.abs(alpha - self.drawn_alpha) > 1e-3 then
 		draw(self, layout, alpha)
 	end
-	gui.set_screen_position(root, vmath.vector3(0, self.last.scroll, 0))
+	gui.set_screen_position(root, vmath.vector3(self.last.slide, self.last.scroll, 0))
+	gui.set_screen_position(head, vmath.vector3(0, self.last.scroll, 0))
 	if self.current then
 		local pulse = layout.calm and 0 or 0.5 + 0.5 * math.sin(self.time * PULSE_RATE)
 		pulseHalo(self.current.halo, self.current.spec, alpha, pulse)

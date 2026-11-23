@@ -32,6 +32,12 @@ describe("progress", function()
 		assert.is_true(progress.isPackOpen(p, catalog, 2))
 	end)
 
+	it("opens everything when the player asks", function()
+		local p = progress.new()
+		assert.is_true(progress.isOpen(p, catalog, 2, 2, true))
+		assert.same({ 1, 3 }, { progress.next(p, catalog, 1, 2, true) })
+	end)
+
 	it("finds the next unsolved open level, crossing packs", function()
 		local p = progress.new({ solved = { ["p1/l1"] = true, ["p1/l2"] = true, ["p1/l3"] = true, ["p1/l4"] = true } })
 		assert.same({ 2, 1 }, { progress.next(p, catalog, 1, 4) })
