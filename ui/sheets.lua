@@ -1,5 +1,5 @@
 -- The content of each text panel ("sheet"), as plain data. Pure: a sheet is
--- { title, modal, scene, text, items = { { id, kind = "button" | "toggle" | "slider", label, value, primary } } }.
+-- { title, note, modal, scene, text, items = { { id, kind = "button" | "toggle" | "slider", label, value, primary } } }.
 -- `scene` reserves room for a live 3D scene (a rule card's) and `text` is a paragraph under it.
 -- Modal sheets dim the screen behind them and sit on a card; the main menu does not, and stands
 -- beside the scene on wide screens (`side`).
@@ -10,8 +10,9 @@ local controls = require "input.controls"
 
 local M = {}
 
--- has_rules: whether any rule card has been seen, so the Rules list has something to show.
-function M.mainMenu(title, can_continue, has_rules)
+-- has_rules: whether any rule card has been seen, so the Rules list has something to show;
+-- version: the build's version, shown small in a corner.
+function M.mainMenu(title, version, can_continue, has_rules)
 	local items = {
 		{ id = "continue", kind = "button", label = can_continue and "Continue" or "Play", primary = true },
 		{ id = "levels", kind = "button", label = "Levels" },
@@ -20,7 +21,7 @@ function M.mainMenu(title, can_continue, has_rules)
 		items[#items + 1] = { id = "rules", kind = "button", label = "Rules" }
 	end
 	items[#items + 1] = { id = "settings", kind = "button", label = "Settings" }
-	return { heading = title, modal = false, side = true, items = items }
+	return { heading = title, note = version ~= "" and "v" .. version or nil, modal = false, side = true, items = items }
 end
 
 -- One rule card (catalog.loadRules); `more` when further cards follow it; touch: whether to

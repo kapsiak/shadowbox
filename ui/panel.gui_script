@@ -11,6 +11,7 @@ local PRIMARY_INK, PRIMARY_SHADOW = theme.vec(ui.primary_ink), theme.vec(ui.prim
 local LIFT = ui.lift
 local PRESS = 0.94
 local INK, ACCENT, TRACK = theme.vec(ui.ink), theme.vec(ui.accent), theme.vec(ui.track)
+local SOFT_INK = theme.vec(ui.soft_ink)
 local DANGER, WHITE, DIM, FADE = theme.vec(ui.danger), theme.vec(ui.white), theme.vec(ui.dim), theme.vec(ui.fade)
 local FONT_SIZE = { title = 64, body = 40 }
 local SLICE = vmath.vector4(30, 30, 30, 30)
@@ -225,6 +226,7 @@ function init(self)
 	self.paragraph = text("body")
 	gui.set_line_break(self.paragraph, true)
 	self.heading = text("title")
+	self.note = text("body")
 	self.mark = box("mark")
 	self.mark_accent = box("mark_accent")
 	self.items = {}
@@ -252,6 +254,11 @@ local function drawFrame(self, layout, a, w, h)
 		local t = layout.text
 		writeText(self.paragraph, "body", t.text, t.x, t.y, t.size, withAlpha(INK, a))
 		gui.set_size(self.paragraph, vmath.vector3(t.w * FONT_SIZE.body / t.size, 0, 0))
+	end
+	gui.set_enabled(self.note, layout.note ~= nil)
+	if layout.note then
+		local t = layout.note
+		writeText(self.note, "body", t.text, t.x, t.y, t.size, withAlpha(SOFT_INK, a), gui.PIVOT_SW)
 	end
 	gui.set_enabled(self.heading, layout.heading ~= nil)
 	gui.set_enabled(self.mark, layout.heading ~= nil)

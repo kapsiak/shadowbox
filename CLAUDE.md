@@ -8,6 +8,8 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 
 ## Commands
 - Specs: `busted` (LuaJIT; `.busted` config). Keep specs compact, one file per area in `spec/`.
+- Player-facing text: `luajit tools/text.lua [pack|rules|interface ...]` lists every string with
+  its file:line (chapter titles, intros and level names in play order; rule cards; menus and keys).
 - Level preview: `luajit tools/preview.lua levels/<pack>/<level>.lua`
 - Level difficulty profile: `luajit tools/solve.lua [-s] levels/<pack>/*.lua` (exhaustive solver:
   solution count, candidates per piece, pieces that must turn, hidden cubes; `-s` one line each).
@@ -17,7 +19,10 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - Input bindings: `luajit tools/make_bindings.lua` writes every bindable key in `input/controls`
   into `input/game.input_binding` (rerun after changing the key list).
 - Wall digits: `python3 tools/make_digits.py` bakes `view/digits.png` (Outfit, distance field).
-- Regenerate icons / sounds: `python3 tools/make_icons.py`, `python3 tools/make_sounds.py`
+- Release: `tools/release.sh` bundles a release web build of `[project] version` (shown on the
+  main menu) into `bundles/<version>/` and zips it for itch.io or static hosting.
+- Regenerate icons / sounds: `python3 tools/make_icons.py` (also the web splash `web/splash.png`
+  and the desktop app icons), `python3 tools/make_sounds.py`
   (then refresh `ui/hud.atlas` from `ui/icons/*.png`). New or updated fonts: run
   `tools/merge_font_overlaps.py` (needs fonttools and skia-pathops).
 - Run: the Defold editor's HTTP API (`.internal/editor.port` and `.internal/editor.token`):
@@ -152,6 +157,10 @@ clients): touch-first is detected in the browser (`pointer: coarse`). Tray piece
 selected (tap again, or the turn keys) and keep that orientation (`play` session `held`); while
 dragging, a second finger's tap beside the dragging finger spins the piece, above or below tips
 it. The chapter arrows flank the chapter dots, clear of the back key.
+
+Alpha (0.1.0-alpha): the web page is themed with no Defold branding (`web/theme.css`, the mark as
+the loading splash); fullscreen is offered wherever the browser allows it (not iPhone Safari),
+never restored on web start, and follows Esc; app icons are the mark.
 
 Next, in order:
 1. On the phone (rebuild the web build first): tray turning, second-finger turn directions (is

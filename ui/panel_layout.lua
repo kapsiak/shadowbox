@@ -72,6 +72,9 @@ function M.compute(screen, sheet)
 			mark = { x = left + mark_h, y = y + size * 0.02, w = mark_h * 2, h = mark_h },
 		}
 	end
+	if sheet.note then
+		layout.note = { text = sheet.note, x = screen.safe.left + row * 0.4, y = screen.safe.bottom + row * 0.4, size = row * 0.28 }
+	end
 	if sheet.scene then
 		layout.scene = { x = cx, y = top - title_h - scene_h / 2, w = width, h = scene_h }
 	end

@@ -1,19 +1,22 @@
-# Welcome to Defold
+# Third Angle
 
-This project was created from the "desktop" project template. This means that the settings in ["game.project"](defold://open?path=/game.project) have been changed to be suitable for a desktop game:
+A 3D puzzle game: arrange coloured block pieces in a grid so their shadows match the target
+projections on the walls. Built with Defold 1.13 for desktop, mobile and web.
 
-- The screen size is set to 1280x720
-- Projection is set to Fixed Fit
-- macOS and Windows icons are set
-- Mouse clicks are bound to action "touch"
-- A simple script in a game object is set up to receive and react to input
+## Playing
+Drag pieces from the tray into the box; turn them with the buttons or keys. Solve a level when
+every wall shows its target. Glass, count and parity walls add their own rules, introduced by
+rule cards as they first appear.
 
-[Build and run](defold://project.build) to see it in action. You can of course alter these settings to fit your needs.
+## Building
+- Open the project in the Defold editor and run it (Project > Build).
+- Release zip: `tools/release.sh` writes `bundles/<version>/third-angle-<version>-wasm-web.zip`, ready to
+  upload to itch.io as an HTML game or to serve from any static host (over HTTPS). Other Defold
+  platforms can be named as arguments. The version is `[project] version` in `game.project`.
+- Specs: `busted`.
 
-Check out [the documentation pages](https://defold.com/learn) for examples, tutorials, manuals and API docs.
+`CLAUDE.md` and `principles.md` describe the code's layout and design; `docs/` holds the art
+direction and mechanics notes.
 
-If you run into trouble, help is available in [our forum](https://forum.defold.com).
-
-Happy Defolding!
-
----
+## Credits
+Font: Outfit (SIL Open Font License).

@@ -1,6 +1,6 @@
 return {
 	title = "Glass",
-	text = "Light passes through glass and takes its colour. Glass behind glass mixes: cyan and yellow make green.",
+	text = "Glass is colored and tranluscent, and the colors mix.",
 	pieces = { A = { glass = "cyan" }, B = { glass = "yellow" }, C = "slate" },
 	layers = {
 		{ "AAC",

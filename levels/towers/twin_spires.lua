@@ -1,5 +1,5 @@
 return {
-	name = "Twin Spires",
+	name = "Two Hs",
 	pieces = { A = "coral", B = "sky", C = "mint" },
 	layers = {
 		{ "A..",

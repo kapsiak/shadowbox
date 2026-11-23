@@ -34,7 +34,7 @@ function M.cardLevel(screen)
 end
 
 local builders = {
-	main_menu = function(info) return content.mainMenu(info.title, info.can_continue, next(info.seen) ~= nil) end,
+	main_menu = function(info) return content.mainMenu(info.title, info.version, info.can_continue, next(info.seen) ~= nil) end,
 	rule = function(info, screen) return content.rule(screen.rules[screen.cards[1]], #screen.cards > 1, not info.has_keyboard) end,
 	rules = function(info, screen) return content.rules(screen.rules, info.seen) end,
 	pause = function() return content.pause() end,

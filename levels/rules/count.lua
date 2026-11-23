@@ -1,6 +1,6 @@
 return {
 	title = "Counting walls",
-	text = "A counting wall shows how many cubes stand in each row behind it. Match every number.",
+	text = "A counting wall shows how many cubes are in the row in front of it.",
 	walls = { front = "count", side = "count" },
 	pieces = { A = "coral", B = "sky" },
 	layers = {

@@ -247,6 +247,23 @@ def splash(ink, accent):
     img.save(OUT.parent.parent / "web" / "splash.png")
 
 
+def app_icon(ink, accent):
+    """The desktop app icon: the mark across a light tile with chamfered corners, like the keys."""
+    side, cut = 1024, 160
+    img = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    ImageDraw.Draw(img).polygon([(cut, 0), (side - cut, 0), (side, cut), (side, side - cut),
+                                 (side - cut, side), (cut, side), (0, side - cut), (0, cut)], fill=(233, 231, 227, 255))
+    w = int(side * 0.84)
+    h = w * ink.height // ink.width
+    at = ((side - w) // 2, (side - h) // 2)
+    for layer, rgb in ((ink, (33, 33, 38)), (accent, (237, 84, 69))):
+        layer = layer.resize((w, h), Image.LANCZOS)
+        img.paste(Image.new("RGBA", layer.size, rgb + (255,)), at, layer)
+    out = OUT.parent.parent / "assets" / "app_icons"
+    img.save(out / "appicon.ico", sizes=[(n, n) for n in (16, 32, 48, 64, 128, 256)])
+    img.save(out / "appicon.icns")
+
+
 def rules():
     """A question mark in the interface face, for the Rules list."""
     from PIL import ImageFont
@@ -259,7 +276,9 @@ def rules():
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    splash(*mark())
+    marks = mark()
+    splash(*marks)
+    app_icon(*marks)
     menu()
     curved_arrow("undo")
     curved_arrow("redo", mirror=True)

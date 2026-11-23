@@ -98,6 +98,7 @@ local function screenInfo(self)
 		safe = { left = area.inset_left, right = area.inset_right, top = area.inset_top, bottom = area.inset_bottom },
 		settings = self.settings,
 		title = sys.get_config_string("project.title", ""),
+		version = sys.get_config_string("project.version", ""),
 		can_continue = self.last ~= nil,
 		seen = self.saved.seen,
 	}
