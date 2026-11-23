@@ -66,9 +66,10 @@ end
 
 -- One chapter's page. screen: { w, h, scale, safe, settings }; chapter: the pack index shown.
 -- Positions are in screen pixels with nothing scrolled; scrolling down by s moves everything up
--- by s. Returns { title, marks, page, banner, arrows, nodes, trail, calm, max_scroll, focus }:
--- marks are the chapters as a row of dots under the title ({ x, y, size, chapter, current,
--- enabled }), arrows the prev and next keys beside the banner ({ x, y, size }), page the
+-- by s. Returns { back, title, marks, arrows, page, banner, nodes, trail, calm, max_scroll,
+-- focus }: back is the back key in the top corner (fixed, not scrolled), marks the chapters as a
+-- row of dots under the title ({ x, y, size, chapter, current, enabled }), arrows the prev and
+-- next keys flanking the dots, kept clear of the back key ({ x, y, size }), page the
 -- chapter's sheet { x, y, w, h } (centre and size), and focus the scroll that brings the
 -- current level (the next one to play) to the middle of the screen, or 0 if it lies elsewhere.
 function M.compute(screen, catalog, saved, chapter)
@@ -87,20 +88,30 @@ function M.compute(screen, catalog, saved, chapter)
 
 	local title_size = math.min(short * 0.06, 34 * screen.scale)
 	local y = h - safe.top - margin - title_size * 0.6
+	local back = M.backKey(screen)
 	local layout = {
+		back = back,
 		title = { text = "Levels", x = cx, y = y, size = title_size },
 		marks = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
 	}
 	y = y - title_size * 1.25
-	local mark_gap = math.min(title_size * 0.9, (w - 2 * margin) / #catalog.packs)
-	for p = 1, #catalog.packs do
+	-- The arrows sit half a gap beyond the outer dots; the gap shrinks so they clear the back key.
+	local count, arrow = #catalog.packs, title_size * 1.3
+	local reach = cx - (back.x + back.size / 2) - arrow * 0.6
+	local mark_gap = math.min(title_size * 0.9, (reach - arrow * 0.6) / (count / 2))
+	for p = 1, count do
 		layout.marks[p] = {
 			chapter = p, current = p == chapter, enabled = progress.isPackOpen(saved, catalog, p, open_all),
-			x = cx + (p - (#catalog.packs + 1) / 2) * mark_gap, y = y, size = title_size * 0.32, hit = mark_gap,
+			x = cx + (p - (count + 1) / 2) * mark_gap, y = y, size = title_size * 0.32, hit = mark_gap,
 			accent = catalog.packs[p].accent,
 		}
 	end
-	y = y - title_size * 1.6
+	local arrow_x = count / 2 * mark_gap + arrow * 0.6
+	layout.arrows = {
+		prev = { x = cx - arrow_x, y = y, size = arrow },
+		next = { x = cx + arrow_x, y = y, size = arrow },
+	}
+	y = y - title_size * 1.8
 
 	local page_w = math.min(w - margin, cell * columns + 2 * node * (GAP + TURN + 0.2))
 	local open_pack = progress.isPackOpen(saved, catalog, chapter, open_all)
@@ -110,12 +121,6 @@ function M.compute(screen, catalog, saved, chapter)
 		text = pack.title, intro = open_pack and pack.intro or "Locked",
 		detail = ("%d / %d"):format(progress.solvedCount(saved, pack), #pack.keys),
 		enabled = open_pack,
-	}
-	local arrow = title_size * 1.5
-	local arrow_x = page_w / 2 - arrow * 0.9
-	layout.arrows = {
-		prev = { x = cx - arrow_x, y = y - title_size * 0.3, size = arrow },
-		next = { x = cx + arrow_x, y = y - title_size * 0.3, size = arrow },
 	}
 	local top = y - title_size * 1.6 - node * 0.75
 	local previous, focus_y
@@ -143,6 +148,14 @@ function M.compute(screen, catalog, saved, chapter)
 	layout.max_scroll = math.max(0, safe.bottom + margin - page_bottom)
 	layout.focus = focus_y and math.max(0, math.min(layout.max_scroll, h * FOCUS_HEIGHT - focus_y)) or 0
 	return layout
+end
+
+-- The key back to the menu, in the top-left corner inside the safe area.
+function M.backKey(screen)
+	local short = math.min(screen.w, screen.h)
+	local size = math.min(math.max(52 * screen.scale, short * 0.075), short * 0.12)
+	local margin = size * 0.35
+	return { x = screen.safe.left + margin + size / 2, y = screen.h - screen.safe.top - margin - size / 2, size = size }
 end
 
 -- The chapter holding level (pack, index), or else the current level's.

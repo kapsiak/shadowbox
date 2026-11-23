@@ -7,6 +7,7 @@ local orient = require "core.orient"
 local piece_look = require "view.piece_look"
 local palette = require "view.palette"
 local cameras = require "view.cameras"
+local board_view = require "view.board_view"
 
 local M = {}
 
@@ -48,7 +49,8 @@ end
 
 -- Lays out unplaced pieces (those without a displayed pose) for a w x h screen whose bottom
 -- `inset` fraction is the tray; rotation is the board camera's. A piece being dragged out of
--- the tray, not yet over the board, follows `pointer` ({ x, y } or nil).
+-- the tray, not yet over the board, follows `pointer` ({ x, y } or nil). ui.held: the
+-- orientations of turned tray pieces (game/play), shown as the pieces will be placed.
 function M.present(view, display, ui, w, h, inset, rotation)
 	cameras.set("tray", CAMERA_POSITION, rotation, CAMERA_FOV, w / h, 0.1, 50)
 	view.rotation = rotation
@@ -73,6 +75,7 @@ function M.present(view, display, ui, w, h, inset, rotation)
 		held.x, held.y, held.size, held.held = ui.pointer.x, ui.pointer.y, slot * 1.2, true
 	end
 	for id, piece_view in pairs(view.pieces) do
+		piece_view.goal_rotation = board_view.poseRotation(ui.held and ui.held[id] or orient.identity)
 		piece_view.goal_fx = vmath.vector4(id == ui.selected and 1 or 0, 0, 0, id == ui.hovered and 1 or 0)
 		piece_view.emphasis = (id == ui.selected or id == ui.hovered) and 1 or 0
 	end
@@ -125,9 +128,12 @@ function M.step(view, dt)
 			piece_view.screen = piece_view.screen and vmath.lerp(k, piece_view.screen, goal) or goal
 			local sx, sy, size = piece_view.screen.x, piece_view.screen.y, piece_view.screen.z
 			local scale = size * world_per_px * SLOT_FILL / view.extent
-			local position = slotToWorld(view, sx, sy, tan_half) - piece_view.center * scale
+			local goal_rotation = piece_view.goal_rotation or vmath.quat()
+			piece_view.rotation = piece_view.rotation and vmath.slerp(k, piece_view.rotation, goal_rotation) or goal_rotation
+			local position = slotToWorld(view, sx, sy, tan_half) - vmath.rotate(piece_view.rotation, piece_view.center) * scale
 			piece_view.fx = vmath.lerp(k, piece_view.fx, piece_view.goal_fx)
 			go.set_position(position, piece_view.go)
+			go.set_rotation(piece_view.rotation, piece_view.go)
 			go.set_scale(scale, piece_view.go)
 			go.set(piece_view.mesh, "fx", piece_view.fx)
 		end

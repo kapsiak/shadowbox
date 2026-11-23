@@ -306,7 +306,7 @@ function M.present(screen, dt, info)
 	tray_view.configure(screen.tray, info.settings)
 	board_view.present(screen.board, display, s.selected, screen.hovered)
 	board_view.step(screen.board, dt, orbit.eyeDirection(screen.rig), orbit.xray(screen.rig))
-	local ui = { selected = s.selected, hovered = screen.hovered, pointer = screen.pointer }
+	local ui = { selected = s.selected, hovered = screen.hovered, pointer = screen.pointer, held = s.held }
 	tray_view.present(screen.tray, display, ui, w, h, hud_layout.TRAY_INSET, rotation)
 	tray_view.step(screen.tray, dt)
 

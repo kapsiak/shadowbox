@@ -147,6 +147,11 @@ the last five. `tools/solve.lua` reports count load (largest number, share of ce
 `tools/solver.lua` can keep found solutions. Level select: chapter pages (arrows, swipe,
 left/right keys, a dot per chapter under the title), opening on the last played level's
 chapter; the select's text batches by layer. Settings > Game: Open all levels.
+Mobile web tested on an iPhone (Safari over the phone's hotspot; the router isolates Wi-Fi
+clients): touch-first is detected in the browser (`pointer: coarse`). Tray pieces turn when
+selected (tap again, or the turn keys) and keep that orientation (`play` session `held`); while
+dragging, a second finger's tap beside the dragging finger spins the piece, above or below tips
+it. The chapter arrows flank the chapter dots, clear of the back key.
 Next: play-test the three packs.
 
 Next, in order:

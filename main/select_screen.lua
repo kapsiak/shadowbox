@@ -1,7 +1,7 @@
 -- The level select screen: one chapter (pack) per page, its levels on a winding trail, each
 -- open level shown as a live 3D thumbnail. Tapping an open level plays it; dragging up and down
--- (with a fling on release) or the wheel scrolls; swiping sideways, the arrow keys beside the
--- banner, the left and right keys, or a chapter's dot under the title turn the page.
+-- (with a fling on release) or the wheel scrolls; swiping sideways, the arrow keys flanking the
+-- chapter dots under the title, the left and right keys, or a dot itself turn the page.
 -- Implements the screen contract used by main.script.
 --
 -- The layout is computed once per screen size and chapter and published with the scroll and
@@ -81,22 +81,16 @@ function M.layout(screen, info)
 	return screen.view
 end
 
-local function backButton(info)
-	local size = math.min(math.max(52 * info.scale, math.min(info.w, info.h) * 0.075), math.min(info.w, info.h) * 0.12)
-	local margin = size * 0.35
-	return { id = "back", x = info.safe.left + margin + size / 2, y = info.h - info.safe.top - margin - size / 2, size = size, group = "corner", enabled = true }
-end
-
--- The back button and the page's arrow keys, which move with the page.
+-- The back key, fixed in its corner, and the chapter arrows, which scroll with the header.
 local function buttons(screen)
-	local arrows, slide, scroll = screen.view.arrows, screen.slide, screen.scroll
-	local function arrow(id, a, enabled)
-		return { id = id, x = a.x + slide, y = a.y + scroll, size = a.size, group = "corner", enabled = enabled }
+	local view, scroll = screen.view, screen.scroll
+	local function key(id, k, dy, enabled)
+		return { id = id, x = k.x, y = k.y + dy, size = k.size, group = "corner", enabled = enabled }
 	end
 	return {
-		backButton(screen.info),
-		arrow("page_prev", arrows.prev, screen.chapter > 1),
-		arrow("page_next", arrows.next, screen.chapter < #screen.catalog.packs),
+		key("back", view.back, 0, true),
+		key("page_prev", view.arrows.prev, scroll, screen.chapter > 1),
+		key("page_next", view.arrows.next, scroll, screen.chapter < #screen.catalog.packs),
 	}
 end
 

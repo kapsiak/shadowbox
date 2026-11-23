@@ -1,5 +1,7 @@
 -- A play session: what the player is doing to a level. Pure Lua.
--- Committed facts live in the history; a drag is a preview that commits only on drop.
+-- Committed facts live in the history; a drag is a preview that commits only on drop. Pieces
+-- in the tray can be turned too: `held` keeps their orientations for the session, and a drag
+-- from the tray starts from them.
 local hot = require "core.hot"
 local rules = require "core.rules"
 local state = require "core.state"
@@ -52,7 +54,7 @@ end
 
 -- saved: optional poses from an earlier visit; poses that no longer fit are dropped.
 function M.new(level, saved)
-	return { level = level, history = history.new(M.fitting(level, saved)), selected = nil, drag = nil }
+	return { level = level, history = history.new(M.fitting(level, saved)), selected = nil, drag = nil, held = {} }
 end
 
 -- Returns to a session left earlier, keeping its history but nothing in hand.
@@ -117,7 +119,7 @@ end
 -- pose near it keeps the last one, and off the board that pose is marked refused.
 function M.grab(s, piece, hit_cell)
 	local from = M.current(s).poses[piece]
-	local drag = { piece = piece, from = from, orient = orient.identity, offset = { 0, 0, 0 },
+	local drag = { piece = piece, from = from, orient = s.held[piece] or orient.identity, offset = { 0, 0, 0 },
 		shift = { 0, 0, 0 }, axis = 2 }
 	if from and hit_cell then
 		drag.orient = from.orient
@@ -217,6 +219,7 @@ function M.drop(s, into_tray)
 		return false
 	end
 	if into_tray then
+		s.held[d.piece] = d.orient
 		return d.from ~= nil and commit(s, { kind = "remove", piece = d.piece })
 	end
 	if d.candidate and d.candidate.ok and not samePose(d.candidate.pose, d.from) then
@@ -233,14 +236,18 @@ local function turnDrag(s, d, axis, dir)
 end
 
 -- Turns the dragged piece about the cube under the pointer, or else the selected piece in
--- place (nudging it if it collides). Turns are quarter turns about a world axis.
+-- place (nudging it if it collides) or in the tray. Turns are quarter turns about a world axis.
 function M.turn(s, axis, dir)
 	if s.drag then
 		return turnDrag(s, s.drag, axis, dir)
 	end
-	local pose = s.selected and M.current(s).poses[s.selected]
-	if not pose then
+	if not s.selected then
 		return false
+	end
+	local pose = M.current(s).poses[s.selected]
+	if not pose then
+		s.held[s.selected] = orient.turn(s.held[s.selected] or orient.identity, axis, dir)
+		return true
 	end
 	local n = orient.turn(pose.orient, axis, dir)
 	for _, k in ipairs(KICKS) do
@@ -269,9 +276,9 @@ function M.nudge(s, axis, delta)
 	return commit(s, { kind = "place", piece = s.selected, pose = { cell = cell, orient = pose.orient } })
 end
 
--- A tap on the already-selected placed piece turns it; any other tap selects.
+-- A tap on the already-selected piece, placed or in the tray, turns it; any other tap selects.
 function M.tap(s, piece)
-	if piece and piece == s.selected and M.current(s).poses[piece] then
+	if piece and piece == s.selected then
 		return M.turn(s, 2, 1)
 	end
 	s.selected = piece
@@ -279,7 +286,9 @@ function M.tap(s, piece)
 end
 
 function M.removeSelected(s)
-	if s.selected and M.current(s).poses[s.selected] and not s.drag then
+	local pose = s.selected and M.current(s).poses[s.selected]
+	if pose and not s.drag then
+		s.held[s.selected] = pose.orient
 		return commit(s, { kind = "remove", piece = s.selected })
 	end
 	return false

@@ -155,6 +155,19 @@ describe("interpret", function()
 		assert.same({ "grab", "drag", "drop" }, kinds(out))
 		assert.equal(3, out[1].piece)
 	end)
+
+	it("turns a dragged piece by where a second finger taps", function()
+		local state, out = interpret.new(100), {}
+		interpret.gesture(state, { kind = "drag_start", button = "primary", x = 50, y = 50 }, function() return { piece = 1 } end, out)
+		for _, at in ipairs({ { 90, 55 }, { 10, 45 }, { 55, 90 }, { 45, 10 } }) do
+			interpret.gesture(state, { kind = "second_tap", x = at[1], y = at[2] }, nil, out)
+		end
+		local turns = {}
+		for i = 2, 5 do
+			turns[#turns + 1] = out[i].about .. out[i].dir
+		end
+		assert.same({ "vertical1", "vertical-1", "right-1", "right1" }, turns)
+	end)
 end)
 
 describe("controls", function()

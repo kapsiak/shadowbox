@@ -22,7 +22,8 @@ local HOP_HEIGHT, HOP_TIME, HOP_STAGGER = 0.45, 0.5, 0.09
 local MAX_DT = 1 / 30
 local REST = 1e-6
 
-local function poseRotation(n)
+-- The rotation of orientation n (core/orient) as a quaternion.
+function M.poseRotation(n)
 	local x, y, z = orient.apply(n, { 1, 0, 0 }), orient.apply(n, { 0, 1, 0 }), orient.apply(n, { 0, 0, 1 })
 	return vmath.quat_basis(vmath.vector3(x[1], x[2], x[3]), vmath.vector3(y[1], y[2], y[3]), vmath.vector3(z[1], z[2], z[3]))
 end
@@ -74,7 +75,7 @@ end
 function M.present(view, display, selected, hovered)
 	for id, p in pairs(view.pieces) do
 		local pose = display.poses[id]
-		p.goal = pose and { position = cellCenter(pose.cell), rotation = poseRotation(pose.orient) }
+		p.goal = pose and { position = cellCenter(pose.cell), rotation = M.poseRotation(pose.orient) }
 		p.lifted = id == display.dragging
 		p.goal_fx = vmath.vector4(id == selected and 1 or 0, 0, id == display.invalid and 1 or 0, id == hovered and 1 or 0)
 	end

@@ -66,7 +66,16 @@ local function autosave(self)
 	end
 end
 
-local mobile = ({ Android = true, ["iPhone OS"] = true })[sys.get_sys_info().system_name]
+-- Touch-first devices: phones and tablets, natively or in a browser (whose system is "HTML5",
+-- so the browser is asked whether its main pointer is a finger).
+local function isTouchFirst()
+	if html5 then
+		return html5.run("matchMedia('(pointer: coarse)').matches") == "true"
+	end
+	return ({ Android = true, ["iPhone OS"] = true })[sys.get_sys_info().system_name] == true
+end
+
+local mobile = isTouchFirst()
 
 local function screenInfo(self)
 	local w, h = window.get_size()
