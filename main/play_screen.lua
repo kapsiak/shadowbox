@@ -4,7 +4,7 @@ local play = require "game.play"
 local interpret = require "input.interpret"
 local board_view = require "view.board_view"
 local tray_view = require "view.tray_view"
-local piece_meshes = require "view.piece_meshes"
+local board_pool = require "view.board_pool"
 local orbit = require "view.orbit"
 local pick = require "view.pick"
 local cameras = require "view.cameras"
@@ -22,26 +22,26 @@ local function toTable(v)
 	return { v.x, v.y, v.z }
 end
 
--- factories: { piece, panel, tray_piece } urls; saved: the board as last left, or nil;
--- session: this level's session from earlier in this run, kept for its undo history, or nil.
-function M.enter(pack, index, factories, saved, session)
+-- pool: the board pool (view/board_pool); factories: { tray_piece, glass_tray_piece } urls;
+-- saved: the board as last left, or nil; session: this level's session from earlier in this
+-- run, kept for its undo history, or nil.
+function M.enter(pack, index, pool, factories, saved, session)
 	local lvl = pack.levels[index]
-	local buffers = piece_meshes.create(lvl)
+	local slot = board_pool.acquire(pool, lvl)
 	return {
 		module = M, pack = pack, index = index, key = pack.keys[index],
 		session = session and play.resume(session) or play.new(lvl, saved), solved = false, hovered = nil, pointer = nil, sheets = {},
 		interpreter = interpret.new(1),
-		buffers = buffers,
-		board = board_view.create(lvl, factories, buffers),
-		tray = tray_view.create(lvl, factories, buffers),
+		slot = slot,
+		board = slot.board,
+		tray = tray_view.create(lvl, factories, slot.buffers),
 		rig = orbit.new(board_view.bounds(lvl)),
 	}
 end
 
 function M.exit(screen)
-	board_view.destroy(screen.board)
+	board_pool.release(screen.slot)
 	tray_view.destroy(screen.tray)
-	piece_meshes.release(screen.buffers)
 	go.set(TRAY_BACKDROP, "rect", vmath.vector4())
 	cameras.clear("tray")
 	models.publish("hud", nil)

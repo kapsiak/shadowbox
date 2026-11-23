@@ -12,6 +12,9 @@ render = /render/game.renderc
 game_binding = /input/game.input_bindingc
 use_accelerometer = 0
 
+[mesh]
+max_count = 512
+
 [display]
 width = 1280
 height = 720

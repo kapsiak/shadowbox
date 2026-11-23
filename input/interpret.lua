@@ -137,7 +137,9 @@ function M.gesture(state, g, pick, out)
 		out[#out + 1] = { kind = "zoom", factor = 1 / g.scale }
 		out[#out + 1] = { kind = "orbit", yaw = -g.twist, pitch = 0 }
 	elseif g.kind == "wheel" and dragging_piece then
-		out[#out + 1] = { kind = "nudge", along = "drag", delta = g.amount }
+		if g.start then
+			out[#out + 1] = { kind = "nudge", along = "drag", delta = g.amount }
+		end
 	elseif g.kind == "wheel" then
 		out[#out + 1] = { kind = "zoom", factor = WHEEL_STEP ^ g.amount }
 	elseif g.kind == "key" then

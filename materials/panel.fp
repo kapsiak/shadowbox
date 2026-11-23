@@ -17,7 +17,7 @@ uniform mediump sampler2D target;
 
 uniform fs_uniforms
 {
-    // xy: grid size in cells
+    // xy: grid size in cells; zw: texture size in texels (the grid fills its low corner)
     mediump vec4 dims;
     // The panel's border beyond each side of the grid in cells: u0, u1, v0, v1
     mediump vec4 margins;
@@ -47,19 +47,19 @@ bool inGrid(vec2 c)
 
 vec4 cellAt(vec2 c)
 {
-    return inGrid(c) ? texture(cells, (c + 0.5) / dims.xy) : vec4(0.0);
+    return inGrid(c) ? texture(cells, (c + 0.5) / dims.zw) : vec4(0.0);
 }
 
 // The light a cell wants, as a key that differs between any two wanted lights.
 vec3 wantAt(vec2 c)
 {
-    vec4 w = inGrid(c) ? texture(target, (c + 0.5) / dims.xy) : vec4(0.0);
+    vec4 w = inGrid(c) ? texture(target, (c + 0.5) / dims.zw) : vec4(0.0);
     return w.a > 0.5 ? w.rgb : vec3(-1.0);
 }
 
 float focusAt(vec2 c)
 {
-    return inGrid(c) ? texture(focus, (c + 0.5) / dims.xy).r : 0.0;
+    return inGrid(c) ? texture(focus, (c + 0.5) / dims.zw).r : 0.0;
 }
 
 // Distance from p (cell-local, centred) to the edge of a region of cells, counting each side and
@@ -118,7 +118,7 @@ void main()
         f_corner[i] = step(focusAt(cell + CORNERS[i]), 0.5);
     }
 
-    vec2 cell_uv = (cell + 0.5) / dims.xy;
+    vec2 cell_uv = (cell + 0.5) / dims.zw;
     vec4 received_t = inside ? texture(received, cell_uv) : vec4(0.0);
     vec4 want_t = inside ? texture(target, cell_uv) : vec4(0.0);
     vec3 received_color = mix(shadow.rgb, surface.rgb * received_t.rgb, received_t.a);
@@ -132,7 +132,7 @@ void main()
     color = mix(color, line.rgb, 0.08 * grid_line);
 
     // Floor: soft contact under pieces.
-    color *= 1.0 - 0.12 * texture(soft, var_uv).a;
+    color *= 1.0 - 0.12 * texture(soft, grid / dims.zw).a;
 
     // Missing target cells keep a faint wash of the wanted light.
     float in_target = s.r * step(0.5, s.r);

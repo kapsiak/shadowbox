@@ -1,0 +1,21 @@
+return {
+	name = "Observatory",
+	pieces = { A = { glass = "cyan" }, B = { glass = "yellow" }, C = { glass = "magenta" }, D = "slate", E = { glass = "magenta" } },
+	layers = {
+		{ "BBEE",
+		  "B..E",
+		  "CCC." },
+		{ "B..E",
+		  "...D",
+		  "C..." },
+		{ "BAAE",
+		  "..DD",
+		  "CCD." },
+		{ ".AA.",
+		  ".A..",
+		  "...." },
+		{ "..A.",
+		  "....",
+		  "...." },
+	},
+}

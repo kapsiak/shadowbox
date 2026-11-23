@@ -13,6 +13,7 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
   solution count, candidates per piece, pieces that must turn, hidden cubes; `-s` one line each).
 - Level carving: `luajit tools/carve.lua -k 3-5 -t 600 -r <seed> sculpture.lua` cuts a drawn
   sculpture into random pieces and prints the best cuts (fewest solutions) as level files.
+  `-g cyan,yellow -q 1 -m 2` makes all but one piece glass and keeps cuts with 2+ mixed wall cells.
 - Regenerate icons / sounds: `python3 tools/make_icons.py`, `python3 tools/make_sounds.py`
   (then refresh `ui/hud.atlas` from `ui/icons/*.png`). New or updated fonts: run
   `tools/merge_font_overlaps.py` (needs fonttools and skia-pathops).
@@ -31,10 +32,12 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - `core/`: pure puzzle model: `level` (ASCII parsing), `shape`, `orient` (24 rotations),
   `grid`, `channels` (per-ray monoids: light, pattern), `projection` (folds channels), `rules`, `state`, `history`, `raycast`.
 - `input/`: `actions` (Defold → raw events), `router` (controls claim input), `gestures`, `interpret`.
-- `view/`: `board_view` (pieces), `walls_view` (projection panels), `tray_view`, `thumbs` (live level
-  thumbnails), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
+- `view/`: `board_view` (pieces), `walls_view` (projection panels), `board_pool` (boards reused
+  for the whole run: runtime resources are rewritten in place, never released, since released
+  ones were not freed), `tray_view`, `thumbs` (live level thumbnails, built a few per frame), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
   `theme` (**all colours and lighting: restyle here**), `palette`.
-- `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout`, `sheets` content), `models`
+- `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout` (computed once per screen size;
+  scroll is one offset on the GUI root), `sheets` content), `models`
   (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
 - `render/game.render_script`: background → `gui_back` (select screen) → board (panels, cubes,
   glass blended over them) → tray → optional
@@ -48,7 +51,7 @@ snake_case variables, camelCase functions, comments only where needed, Lua 5.1/L
 GUI scripts only draw what `ui/models` publishes; input decisions happen in `main` phases.
 Never commit or modify git; the user does that.
 
-## Status (fifth session, paused mid-content)
+## Status (sixth session, paused before Counting & parity)
 Done: core model, rendering, camera (ortho snaps), drag by contact placement, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -76,20 +79,41 @@ Fifth session (content and controls): pieces start at a resting pose derived fro
 (`shape.rest`), so turning is part of solving; the save fingerprint includes solution poses.
 Placement is by contact: a dragged piece rests against the face, floor or wall under the
 pointer and the preview is always legal (nearest legal pose; a turn while dragging is never
-hidden); turning a placed piece searches offsets within 3 cells. Content plan: about 8 packs of
-10-12 levels, difficulty measured by the solver: Basics (done, 11), Windows (done, 11; holes as
-clues), then Towers, Overhead (top view; loose sculptures set aside for it: Corner Window,
-Lattice, Gatehouse, Lantern), Glass, Packing, Spares (`use_all = false`), Capstone. Basics and
-Windows await the user's play-test of Windows; `levels/glass` and `levels/towers` are still old.
+hidden); turning a placed piece searches offsets within 3 cells.
+
+Sixth session (content and performance). Content plan: about 8 packs of
+about 20 levels, difficulty measured by the solver: Basics, Windows, Towers (up to 7 tall, depth
+hidden from both walls) and Overhead (front, side and top; mostly height-map plans) are done at 20
+each; Basics and Windows were play-tested at 11 levels ("feels good"), the additions and Towers and
+Overhead await play-test. Glass (done, 20, walls only, awaits play-test): one tint, then mixing
+(cyan + yellow = green), all three secondaries, then darkness from glass alone (crossed primaries,
+or all three secondaries); opaque pieces in glass levels are `slate` so colour always means glass.
+Every glass cut came out unique (colour tells pieces apart). Agreed chapter structure: each mechanic
+gets its own intro pack, mixed packs later, several hundred levels in all. Next packs: Counting &
+parity (new channels and drawing), Patterns (needs drawing), Spares (`use_all = false`); then
+mixed packs and a capstone. Lessons from carving: symmetric or hollow sculptures (rings, mirrored spires,
+diagonals with x = z) give many solutions under two views; break the symmetry, and avoid
+single-cube leaves (carve then finds no cuts). A third view does not rescue frames: their cubes
+are forced but pieces tile the edges many ways. Height maps (no overhangs) carve well under three
+views. Performance: runtime buffers and textures were never freed by the engine after
+`resource.release`, so boards come from `view/board_pool` (rebound in place; wall textures fixed at
+8x8); thumbnails build two per frame; the level select layout is static and scroll is one offset,
+with a fling; `play.display` caches its evaluation; settled wall layers and resting pieces cost
+nothing per frame. Trackpads send the wheel as a held button with repeats; each repeat is a step.
 
 Next, in order:
 1. Art polish is done for now (fourth session); motion only if play-testing asks for it.
 2. Mechanics prototype (`docs/mechanics.md`): ray inspection on hover, then draw the pattern
    channel.
 3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
-4. Content (in progress, before mechanics): remaining packs above, then an authoring guide.
+4. Content (in progress): next session starts Counting & parity: sum and XOR channels in
+   `core/channels`, solver pruning for non-idempotent channels (its `allowed` shortcut assumes
+   idempotence), wall drawing (shade or digit, odd/even mark), carve support, then intro packs.
+   Then Patterns (draw the pattern channel), Spares, mixed packs, an authoring guide.
 5. Web/mobile builds and touch testing.
 
-Untested or known: touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
+Untested or known: the level select still feels a little laggy (after the board pool, staggered
+thumbnail builds and the static layout; profile before changing more; chapter pages are the agreed
+next option); touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
 save on focus loss and quit, key press sinking, stacked glass (blending depends on draw order);
 the editor linter shows stale warnings (e.g. `board_view.present` arity, `.axis` field).

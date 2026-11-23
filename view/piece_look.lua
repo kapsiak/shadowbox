@@ -21,9 +21,16 @@ function M.apply(mesh, level, id, prefs)
 	go.set(mesh, "pattern", vmath.vector4(prefs.patterns and (id - 1) % 6 + 1 or 0, 0, 0, 0))
 end
 
--- A key that changes whenever `apply` would give a different result.
-function M.key(prefs)
-	return tostring(prefs.colors) .. (prefs.patterns and "+patterns" or "")
+-- Applies prefs to every piece in `pieces` ({ [id] = { mesh } }) unless `look`, the look
+-- last returned, already matches them. Returns the look now applied.
+function M.update(look, pieces, level, prefs)
+	if look and look.colors == prefs.colors and look.patterns == prefs.patterns then
+		return look
+	end
+	for id, p in pairs(pieces) do
+		M.apply(p.mesh, level, id, prefs)
+	end
+	return { colors = prefs.colors, patterns = prefs.patterns }
 end
 
 return M

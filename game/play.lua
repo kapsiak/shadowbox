@@ -303,24 +303,32 @@ function M.redo(s)
 end
 
 -- What to show this frame: committed poses with the drag preview laid over them.
--- Returns { poses, invalid = piece id or nil, dragging = piece id or nil, evaluation }.
+-- Returns { poses, invalid = piece id or nil, dragging = piece id or nil, evaluation }, the
+-- same table until the state or the drag candidate changes (both are replaced, never mutated).
 function M.display(s)
+	local current, d = M.current(s), s.drag
+	local candidate, dragging = d and d.candidate, d and d.piece
+	local cached = s.shown
+	if cached and cached.state == current and cached.candidate == candidate and cached.dragging == dragging then
+		return cached.display
+	end
 	local poses = {}
-	for id, pose in pairs(M.current(s).poses) do
+	for id, pose in pairs(current.poses) do
 		poses[id] = pose
 	end
-	local d, invalid = s.drag, nil
-	if d and d.candidate then
-		poses[d.piece] = d.candidate.pose
-		invalid = not d.candidate.ok and d.piece or nil
+	local invalid
+	if candidate then
+		poses[dragging] = candidate.pose
+		invalid = not candidate.ok and dragging or nil
 	end
-	local shown = invalid and M.current(s) or { poses = poses }
-	return {
+	local display = {
 		poses = poses,
 		invalid = invalid,
-		dragging = d and d.piece,
-		evaluation = rules.evaluate(s.level, shown),
+		dragging = dragging,
+		evaluation = rules.evaluate(s.level, invalid and current or { poses = poses }),
 	}
+	s.shown = { state = current, candidate = candidate, dragging = dragging, display = display }
+	return display
 end
 
 return M

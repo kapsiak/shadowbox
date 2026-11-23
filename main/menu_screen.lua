@@ -2,7 +2,7 @@
 -- the main menu sheet. Dragging spins the sculpture. Implements the screen contract in main.script.
 local rules = require "core.rules"
 local board_view = require "view.board_view"
-local piece_meshes = require "view.piece_meshes"
+local board_pool = require "view.board_pool"
 local orbit = require "view.orbit"
 local cameras = require "view.cameras"
 local sheets = require "main.sheets"
@@ -17,15 +17,15 @@ local INSETS = { left = 0, right = 0, top = 0.17, bottom = 0.4 }
 local SIDE_INSETS = { left = panel_layout.SIDE, right = 0.03, top = 0.12, bottom = 0.12 }
 local ZOOM, SIDE_ZOOM = 0.78, 1.15
 
-function M.enter(showcase, factories)
-	local buffers = piece_meshes.create(showcase)
-	local state = { poses = showcase.solution }
+-- pool: the board pool (view/board_pool).
+function M.enter(showcase, pool)
+	local slot = board_pool.acquire(pool, showcase)
 	local screen = {
-		module = M, level = showcase, sheets = { "main_menu" }, buffers = buffers,
-		board = board_view.create(showcase, factories, buffers),
+		module = M, level = showcase, sheets = { "main_menu" }, slot = slot,
+		board = slot.board,
 		rig = orbit.new(board_view.bounds(showcase)),
 		interpreter = interpret.new(1),
-		display = { poses = showcase.solution, evaluation = rules.evaluate(showcase, state) },
+		display = { poses = showcase.solution, evaluation = rules.evaluate(showcase, { poses = showcase.solution }) },
 	}
 	screen.rig.goal.pitch = math.rad(-22)
 	screen.rig.goal.zoom, screen.rig.current.zoom = ZOOM, ZOOM
@@ -33,8 +33,7 @@ function M.enter(showcase, factories)
 end
 
 function M.exit(screen)
-	board_view.destroy(screen.board)
-	piece_meshes.release(screen.buffers)
+	board_pool.release(screen.slot)
 	models.publish("panel", nil)
 end
 

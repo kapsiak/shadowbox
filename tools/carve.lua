@@ -1,13 +1,17 @@
 -- Usage (from the project root):
---   luajit tools/carve.lua [-k min-max] [-t tries] [-o shown] [-n limit] [-r seed] sculpture.lua
+--   luajit tools/carve.lua [-k min-max] [-t tries] [-o shown] [-n limit] [-r seed]
+--                          [-g colour,... [-q opaque] [-m mixes]] sculpture.lua
 -- Cuts a sculpture (a level file whose drawn cells may all share one letter; `pieces` is
 -- ignored) into random pieces of min..max cubes, profiles each cut with the solver and prints
 -- the best as level files: fewest solutions first, then the most search.
+-- With -g, all but `opaque` pieces become glass, each listed colour used once before repeats;
+-- -m keeps only cuts with at least that many wall cells lit by a mix (a colour no piece has).
 package.path = "./?.lua;./tools/?.lua;" .. package.path
 
 local level = require "core.level"
 local source_data = require "core.source"
 local solver = require "solver"
+local channels = require "core.channels"
 
 local PALETTE = { "coral", "sky", "mint", "butter", "lilac", "peach", "teal", "rose", "sage" }
 local NEIGHBORS = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } }
@@ -126,7 +130,51 @@ local function colours(cells, at, owner, count)
 	return chosen
 end
 
-local function toLevel(def, cells, at, size, owner, count)
+local function shuffled(n)
+	local out = {}
+	for i = 1, n do
+		out[i] = i
+	end
+	for i = n, 2, -1 do
+		local j = math.random(i)
+		out[i], out[j] = out[j], out[i]
+	end
+	return out
+end
+
+-- Opaque pieces get colour names; the rest become glass from `glass`, each colour once first.
+local function materials(names, count, glass, opaque)
+	if not glass then
+		return names
+	end
+	local order, out = shuffled(count), {}
+	opaque = math.min(opaque, count - 1)
+	for n, p in ipairs(order) do
+		if n <= opaque then
+			out[p] = names[p]
+		else
+			local g = n - opaque
+			out[p] = { glass = glass[g] or glass[math.random(#glass)] }
+		end
+	end
+	return out
+end
+
+local function mixes(lvl, glass)
+	local plain = { [0] = true, [7] = true }
+	for _, name in ipairs(glass or {}) do
+		plain[channels.light.names[name]] = true
+	end
+	local n = 0
+	for _, target in pairs(lvl.targets) do
+		for _, v in ipairs(target.layers.light or {}) do
+			n = n + (plain[v] and 0 or 1)
+		end
+	end
+	return n
+end
+
+local function toLevel(def, cells, at, size, owner, count, glass, opaque)
 	local letters, layers = {}, {}
 	for p = 1, count do
 		letters[p] = string.char(64 + p)
@@ -143,8 +191,8 @@ local function toLevel(def, cells, at, size, owner, count)
 		end
 	end
 	local pieces = {}
-	for p, name in ipairs(colours(cells, at, owner, count)) do
-		pieces[letters[p]] = name
+	for p, material in ipairs(materials(colours(cells, at, owner, count), count, glass, opaque)) do
+		pieces[letters[p]] = material
 	end
 	return { name = def.name, views = def.views, rules = def.rules, pieces = pieces, layers = layers }
 end
@@ -163,7 +211,8 @@ local function format(def)
 	end
 	table.sort(keys)
 	for i, k in ipairs(keys) do
-		parts[i] = ('%s = "%s"'):format(k, def.pieces[k])
+		local m = def.pieces[k]
+		parts[i] = type(m) == "table" and ('%s = { glass = "%s" }'):format(k, m.glass) or ('%s = "%s"'):format(k, m)
 	end
 	out[#out + 1] = "\tpieces = { " .. table.concat(parts, ", ") .. " },"
 	out[#out + 1] = "\tlayers = {"
@@ -179,7 +228,7 @@ local function format(def)
 	return table.concat(out, "\n")
 end
 
-local opts, path = { min = 3, max = 5, tries = 300, shown = 3, limit = 50, seed = os.time() }, nil
+local opts, path = { min = 3, max = 5, tries = 300, shown = 3, limit = 50, seed = os.time(), opaque = 0, mixes = 0 }, nil
 local i = 1
 while i <= #arg do
 	local a = arg[i]
@@ -187,9 +236,17 @@ while i <= #arg do
 		i = i + 1
 		opts.min, opts.max = arg[i]:match("(%d+)-(%d+)")
 		opts.min, opts.max = tonumber(opts.min), tonumber(opts.max)
-	elseif a == "-t" or a == "-o" or a == "-n" or a == "-r" then
+	elseif a == "-g" then
 		i = i + 1
-		opts[({ ["-t"] = "tries", ["-o"] = "shown", ["-n"] = "limit", ["-r"] = "seed" })[a]] = tonumber(arg[i])
+		opts.glass = {}
+		for name in arg[i]:gmatch("[^,]+") do
+			assert(channels.light.names[name], "unknown glass colour " .. name)
+			opts.glass[#opts.glass + 1] = name
+		end
+	elseif a == "-t" or a == "-o" or a == "-n" or a == "-r" or a == "-q" or a == "-m" then
+		i = i + 1
+		local field = { ["-t"] = "tries", ["-o"] = "shown", ["-n"] = "limit", ["-r"] = "seed", ["-q"] = "opaque", ["-m"] = "mixes" }
+		opts[field[a]] = tonumber(arg[i])
 	else
 		path = a
 	end
@@ -202,17 +259,18 @@ local results, seen = {}, {}
 for _ = 1, opts.tries do
 	local owner, count = cut(cells, at, opts.min, opts.max)
 	if owner then
-		local lvl_def = toLevel(def, cells, at, size, owner, count)
+		local lvl_def = toLevel(def, cells, at, size, owner, count, opts.glass, opts.opaque)
 		local text = format(lvl_def)
 		local lvl = level.parse(lvl_def)
-		if lvl and not seen[text] then
+		local mixed = lvl and mixes(lvl, opts.glass) or 0
+		if lvl and not seen[text] and mixed >= opts.mixes then
 			seen[text] = true
 			local report = solver.analyse(lvl, { limit = opts.limit })
 			local turns = 0
 			for _, p in ipairs(report.pieces) do
 				turns = turns + (p.must_turn and 1 or 0)
 			end
-			results[#results + 1] = { text = text, report = report, pieces = count, turns = turns }
+			results[#results + 1] = { text = text, report = report, pieces = count, turns = turns, mixed = mixed }
 		end
 	end
 end
@@ -225,7 +283,7 @@ end)
 print(("%d distinct cuts of %d cubes (seed %d)"):format(#results, #cells, opts.seed))
 for r = 1, math.min(opts.shown, #results) do
 	local res = results[r]
-	print(("\n-- %d pieces, %d must turn, solutions %s, nodes %d"):format(res.pieces, res.turns,
-		res.report.solutions .. (res.report.capped and "+" or ""), res.report.nodes))
+	print(("\n-- %d pieces, %d must turn, solutions %s, nodes %d, mixed cells %d"):format(res.pieces, res.turns,
+		res.report.solutions .. (res.report.capped and "+" or ""), res.report.nodes, res.mixed))
 	print(res.text)
 end

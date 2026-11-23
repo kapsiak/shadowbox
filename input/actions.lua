@@ -35,8 +35,10 @@ function M.read(action_id, action)
 		end
 		return { kind = "touches", points = points }
 	end
-	if wheels[action_id] and action.pressed then
-		return { kind = "wheel", amount = wheels[action_id] * (action.value or 1) }
+	-- The wheel arrives as a held button: a trackpad repeats it while scrolling, value 1 each
+	-- time and 0 on release, so every event with a value is one step; `start` marks a gesture's first.
+	if wheels[action_id] and (action.value or 0) > 0 then
+		return { kind = "wheel", amount = wheels[action_id], start = action.pressed }
 	end
 	if keys[action_id] then
 		return { kind = "key", name = keys[action_id], pressed = action.pressed, released = action.released }

@@ -3,7 +3,7 @@
 -- Raw events:
 --   { kind = "pointer", button = "primary"|"secondary", x, y, pressed, released }
 --   { kind = "touches", points = { { id, x, y, pressed, released }, ... } }
---   { kind = "wheel", amount }
+--   { kind = "wheel", amount, start }
 --   { kind = "key", name, pressed, released }
 --   { kind = "hover", x, y }
 -- Gestures:
@@ -11,7 +11,7 @@
 --   drag_start { button, x, y }, drag_move { button, x, y, dx, dy, multi }, drag_end { button, x, y }
 --   two_finger { scale, twist }        relative scale and twist angle (radians) since the last event
 --   second_tap { x, y }                a quick touch by another finger while the first stays down
---   wheel { amount }, key { name, pressed, released }, hover { x, y } (pointer moved, no button)
+--   wheel { amount, start } (start: the first step of a scroll gesture), key { name, pressed, released }, hover { x, y } (pointer moved, no button)
 --
 -- On touch devices the first finger also arrives as the primary pointer; `multi` marks pointer
 -- moves made while two or more fingers are down, so receivers can treat them as part of a pinch.
@@ -130,7 +130,7 @@ function M.feed(rec, ev)
 	elseif ev.kind == "touches" then
 		onTouches(rec, ev, out)
 	elseif ev.kind == "wheel" then
-		out[1] = { kind = "wheel", amount = ev.amount }
+		out[1] = { kind = "wheel", amount = ev.amount, start = ev.start }
 	elseif ev.kind == "key" then
 		out[1] = { kind = "key", name = ev.name, pressed = ev.pressed, released = ev.released }
 	elseif ev.kind == "hover" then

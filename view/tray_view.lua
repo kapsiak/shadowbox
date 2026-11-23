@@ -77,13 +77,7 @@ end
 
 -- Applies display preferences: { colors, patterns }.
 function M.configure(view, prefs)
-	local key = piece_look.key(prefs)
-	if view.look ~= key then
-		view.look = key
-		for id, piece_view in pairs(view.pieces) do
-			piece_look.apply(piece_view.mesh, view.level, id, prefs)
-		end
-	end
+	view.look = piece_look.update(view.look, view.pieces, view.level, prefs)
 end
 
 function M.contains(view, y)

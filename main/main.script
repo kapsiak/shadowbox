@@ -18,6 +18,7 @@ local storage = require "main.storage"
 local menu_screen = require "main.menu_screen"
 local play_screen = require "main.play_screen"
 local select_screen = require "main.select_screen"
+local board_pool = require "view.board_pool"
 local progress = require "game.progress"
 local settings = require "game.settings"
 local save_data = require "game.save_data"
@@ -93,7 +94,7 @@ local function openLevel(self, pack_index, level_index)
 	markDirty(self)
 	local pack = self.catalog.packs[pack_index]
 	local key = pack.keys[level_index]
-	switchTo(self, play_screen.enter(pack, level_index, self.factories, self.boards[key], self.sessions[key]))
+	switchTo(self, play_screen.enter(pack, level_index, self.pool, self.factories, self.boards[key], self.sessions[key]))
 	self.sessions[key] = self.screen.session
 end
 
@@ -112,7 +113,7 @@ end
 local function changeScreen(self, request)
 	local to = request.to
 	if to == "menu" then
-		switchTo(self, menu_screen.enter(self.showcase, self.factories))
+		switchTo(self, menu_screen.enter(self.showcase, self.pool))
 	elseif to == "play" then
 		openLevel(self, request.pack, request.index)
 	elseif to == "next" or to == "continue" then
@@ -125,10 +126,10 @@ local function changeScreen(self, request)
 		if p then
 			openLevel(self, p, l)
 		else
-			switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.factories))
+			switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool))
 		end
 	elseif to == "select" then
-		switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.factories))
+		switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool))
 	end
 end
 
@@ -231,6 +232,7 @@ function init(self)
 		anchor = msg.url("#anchor_factory"),
 		glass_piece = msg.url("#glass_piece_factory"), glass_tray_piece = msg.url("#glass_tray_piece_factory"),
 	}
+	self.pool = board_pool.new(self.factories)
 	self.catalog = assert(catalog_loader.load())
 	self.showcase = assert(catalog_loader.loadShowcase())
 	local data = save_data.decode(storage.load(), self.catalog)
@@ -253,7 +255,7 @@ function init(self)
 	go.set("/tray_backdrop#mesh", "fill", theme.vec(tray.color))
 	go.set("/tray_backdrop#mesh", "lip", theme.vec(tray.lip))
 	go.set("/tray_backdrop#mesh", "corner", vmath.vector4(tray.chamfer, 0, 0, 0))
-	switchTo(self, menu_screen.enter(self.showcase, self.factories))
+	switchTo(self, menu_screen.enter(self.showcase, self.pool))
 	audio.startMusic()
 	local info = screenInfo(self)
 	self.screen.module.layout(self.screen, info)

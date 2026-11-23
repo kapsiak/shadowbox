@@ -1,0 +1,20 @@
+return {
+	name = "Dovecote",
+	pieces = { A = "coral", B = "sky", C = "mint" },
+	layers = {
+		{ "AA",
+		  "A." },
+		{ "A.",
+		  "A." },
+		{ "AB",
+		  ".B" },
+		{ "C.",
+		  ".B" },
+		{ "CC",
+		  "BB" },
+		{ "C.",
+		  ".." },
+		{ "CC",
+		  ".." },
+	},
+}

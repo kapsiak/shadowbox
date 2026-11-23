@@ -63,12 +63,12 @@ local function levelState(saved, catalog, p, l)
 	return progress.isSolved(saved, key) and "solved" or progress.isOpen(saved, catalog, p, l) and "open" or "locked"
 end
 
--- screen: { w, h, scale, safe, settings }; scroll: pixels scrolled down from the top.
+-- screen: { w, h, scale, safe, settings }. Positions are in screen pixels with nothing
+-- scrolled; scrolling down by s moves everything up by s.
 -- Returns { title, pages, banners, nodes, trail, calm, max_scroll, focus }, where each chapter
--- sits on a page { id, x, y, w, h } (centre and size)
--- and focus is the scroll
--- that brings the current level (the next one to play) to the middle of the screen.
-function M.compute(screen, catalog, saved, scroll)
+-- sits on a page { id, x, y, w, h } (centre and size) and focus is the scroll that brings the
+-- current level (the next one to play) to the middle of the screen.
+function M.compute(screen, catalog, saved)
 	local w, h, safe = screen.w, screen.h, screen.safe
 	local short = math.min(w, h)
 	local margin = math.max(short * 0.04, 16 * screen.scale) + math.max(safe.left, safe.right)
@@ -85,7 +85,7 @@ function M.compute(screen, catalog, saved, scroll)
 	local cur_p, cur_l = progress.next(saved, catalog, 1, 0)
 
 	local title_size = math.min(short * 0.06, 34 * screen.scale)
-	local y = h - safe.top - margin - title_size * 0.6 + scroll
+	local y = h - safe.top - margin - title_size * 0.6
 	local layout = {
 		title = { text = "Levels", x = cx, y = y, size = title_size },
 		pages = {}, banners = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
@@ -120,7 +120,7 @@ function M.compute(screen, catalog, saved, scroll)
 				trailDots(layout.trail, trailCurve(previous, spec, node), node, pack.accent, previous.state == "solved")
 			end
 			if spec.current then
-				focus_y = spec.y - scroll
+				focus_y = spec.y
 			end
 			previous = spec
 		end
@@ -130,8 +130,7 @@ function M.compute(screen, catalog, saved, scroll)
 		}
 		y = previous.y - node * 0.75 - title_size * 1.8
 	end
-	local content_bottom = y - scroll
-	layout.max_scroll = math.max(0, safe.bottom + margin - content_bottom)
+	layout.max_scroll = math.max(0, safe.bottom + margin - y)
 	layout.focus = focus_y and math.max(0, math.min(layout.max_scroll, h * FOCUS_HEIGHT - focus_y)) or 0
 	return layout
 end

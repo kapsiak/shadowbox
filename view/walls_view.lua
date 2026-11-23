@@ -31,21 +31,8 @@ local margins = {
 	top = { MARGIN, MARGIN, MARGIN, MARGIN },
 }
 local AXIS_NAMES = { "x", "y", "z" }
-
--- Each wall has a mesh for either side of the board, both facing it: side -1 sits below
--- the low end of its axis, side 1 beyond the high end.
-local function sideBuffers(level, name, owned)
-	local axes, axis = projection.axes[name], axes_of[name]
-	local w, h = level.size[axes.u], level.size[axes.v]
-	local far = level.size[axis] + gaps[name]
-	local buffers = {
-		[-1] = resources.createBuffer(mesh_gen.panel(axes.u, axes.v, axis, w, h, -gaps[name], margins[name], 1)),
-		[1] = resources.createBuffer(mesh_gen.panel(axes.u, axes.v, axis, w, h, far, margins[name], -1)),
-	}
-	owned[#owned + 1] = buffers[-1]
-	owned[#owned + 1] = buffers[1]
-	return buffers, w, h
-end
+-- Layer textures have this fixed size; a wall's w x h grid fills their low corner.
+local TEXELS = 8
 
 local function zeros(n)
 	local t = {}
@@ -55,39 +42,70 @@ local function zeros(n)
 	return t
 end
 
--- A w x h RGBA texture whose texels ease from `now` toward `goal`.
-local function newLayer(w, h, owned)
-	local texture = resources.createTexture(w, h, zeros(w * h * 4))
-	owned[#owned + 1] = texture
-	return { texture = texture, now = zeros(w * h * 4), goal = zeros(w * h * 4), dirty = true }
-end
 
 -- Texture slots follow the sampler order in panel.material; `cells` is bound twice (sharp, soft).
+local LAYERS = { "cells", "focus", "received", "target" }
 local slots = { { "texture0", "cells" }, { "texture1", "cells" }, { "texture2", "focus" }, { "texture3", "received" }, { "texture4", "target" } }
 
-function M.create(level, factory_url)
-	local walls = { level = level, list = {}, owned = {} }
+-- The wall objects under `parent`, hidden until bound to a level.
+function M.create(factory_url, parent)
+	local walls = { list = {} }
 	for name, axis in pairs(axes_of) do
-		local buffers, w, h = sideBuffers(level, name, walls.owned)
 		local id = factory.create(factory_url)
+		go.set_parent(id, parent)
 		local mesh = msg.url(nil, id, "mesh")
-		local layers = {}
-		for _, layer in ipairs({ "cells", "focus", "received", "target" }) do
-			layers[layer] = newLayer(w, h, walls.owned)
+		local textures = {}
+		for _, key in ipairs(LAYERS) do
+			textures[key] = resources.texture(nil, TEXELS, TEXELS, (resources.texels(TEXELS, TEXELS)))
 		end
-		go.set(mesh, "vertices", buffers[-1])
 		for _, slot in ipairs(slots) do
-			go.set(mesh, slot[1], layers[slot[2]].texture)
+			go.set(mesh, slot[1], textures[slot[2]])
 		end
-		local m = margins[name]
-		go.set(mesh, "dims", vmath.vector4(w, h, 0, 0))
-		go.set(mesh, "margins", vmath.vector4(m[1], m[2], m[3], m[4]))
-		walls.list[name] = {
-			name = name, axis = axis, go = id, mesh = mesh, buffers = buffers, w = w, h = h, layers = layers,
-			side = -1, goal_side = -1, opacity = 1, pulse = 0, matched = false, glow = 0,
-		}
+		msg.post(mesh, "disable")
+		walls.list[name] = { name = name, axis = axis, mesh = mesh, buffers = {}, textures = textures, layers = {} }
 	end
 	return walls
+end
+
+-- Each wall has a mesh for either side of the board, both facing it: side -1 sits below
+-- the low end of its axis, side 1 beyond the high end. Each layer holds w x h RGBA texels
+-- that ease from `now` toward `goal`, uploaded to its texture through `texels`; `moving` is
+-- set when a goal changes and cleared once `now` reaches it.
+local function bindWall(wall, level, blank)
+	local name, axis = wall.name, wall.axis
+	local axes = projection.axes[name]
+	local w, h = level.size[axes.u], level.size[axes.v]
+	assert(w <= TEXELS and h <= TEXELS, "walls_view: a wall larger than the layer textures")
+	local far = level.size[axis] + gaps[name]
+	local m = margins[name]
+	wall.buffers[-1] = resources.buffer(wall.buffers[-1], mesh_gen.panel(axes.u, axes.v, axis, w, h, -gaps[name], m, 1))
+	wall.buffers[1] = resources.buffer(wall.buffers[1], mesh_gen.panel(axes.u, axes.v, axis, w, h, far, m, -1))
+	for _, key in ipairs(LAYERS) do
+		local texture = resources.texture(wall.textures[key], TEXELS, TEXELS, blank)
+		local texels, stream = resources.texels(w, h)
+		wall.layers[key] = { texture = texture, texels = texels, stream = stream, now = zeros(w * h * 4), goal = zeros(w * h * 4), moving = false }
+	end
+	go.set(wall.mesh, "vertices", wall.buffers[-1])
+	go.set(wall.mesh, "dims", vmath.vector4(w, h, TEXELS, TEXELS))
+	go.set(wall.mesh, "margins", vmath.vector4(m[1], m[2], m[3], m[4]))
+	wall.w, wall.h = w, h
+	wall.side, wall.goal_side, wall.opacity, wall.pulse, wall.matched, wall.glow = -1, -1, 1, 0, false, 0
+end
+
+-- Shows `level`'s walls, cleared: cells grow in from nothing.
+function M.bind(walls, level)
+	walls.level = level
+	local blank = resources.texels(TEXELS, TEXELS)
+	for _, wall in pairs(walls.list) do
+		bindWall(wall, level, blank)
+		msg.post(wall.mesh, "enable")
+	end
+end
+
+function M.hide(walls)
+	for _, wall in pairs(walls.list) do
+		msg.post(wall.mesh, "disable")
+	end
 end
 
 local function boardCells(level, id, pose)
@@ -100,13 +118,21 @@ local function boardCells(level, id, pose)
 	return cells
 end
 
+-- Sets one goal value of a layer, marking the layer to ease when it changes.
+local function put(layer, i, v)
+	if layer.goal[i] ~= v then
+		layer.goal[i] = v
+		layer.moving = true
+	end
+end
+
 -- Marks the cells the focused piece casts onto, in the red channel of each wall's focus goal.
 local function focusGoals(walls, cells)
 	for name, wall in pairs(walls.list) do
 		local cast = cells and projection.cover(walls.level.size, cells, name)
-		local goal = wall.layers.focus.goal
+		local focus = wall.layers.focus
 		for i = 1, wall.w * wall.h do
-			goal[(i - 1) * 4 + 1] = cast and cast[i] and 1 or 0
+			put(focus, (i - 1) * 4 + 1, cast and cast[i] and 1 or 0)
 		end
 	end
 end
@@ -129,14 +155,14 @@ end
 -- Writes the colour of `light` into texel i: rgb the glass colour and a = 1, or a = 0 for
 -- darkness (drawn in the panel's ink). White leaves the texel alone, so a cell keeps its
 -- colour while it fades out.
-local function lightGoal(goal, i, light)
+local function lightGoal(layer, i, light)
 	if not light or light == WHITE then
 		return
 	end
 	local base, color = (i - 1) * 4, theme.glass[light]
-	goal[base + 4] = color and 1 or 0
+	put(layer, base + 4, color and 1 or 0)
 	for k = 1, color and 3 or 0 do
-		goal[base + k] = color[k]
+		put(layer, base + k, color[k])
 	end
 end
 
@@ -144,16 +170,16 @@ end
 -- received and target: the colour of the light received and wanted (see lightGoal).
 -- `contact` is given for the floor only.
 local function cellGoals(wall, target, comparison, contact)
-	local goal = wall.layers.cells.goal
+	local layers = wall.layers
 	local wanted = target and target.layers.light
 	local current = comparison and comparison.current.layers.light
 	for i = 1, wall.w * wall.h do
 		local base = (i - 1) * 4
-		goal[base + 1] = wanted and wanted[i] ~= WHITE and 1 or 0
-		goal[base + 2] = current and current[i] ~= WHITE and 1 or 0
-		goal[base + 4] = contact and contact[i] and 1 or 0
-		lightGoal(wall.layers.received.goal, i, current and current[i])
-		lightGoal(wall.layers.target.goal, i, wanted and wanted[i])
+		put(layers.cells, base + 1, wanted and wanted[i] ~= WHITE and 1 or 0)
+		put(layers.cells, base + 2, current and current[i] ~= WHITE and 1 or 0)
+		put(layers.cells, base + 4, contact and contact[i] and 1 or 0)
+		lightGoal(layers.received, i, current and current[i])
+		lightGoal(layers.target, i, wanted and wanted[i])
 	end
 end
 
@@ -195,12 +221,6 @@ function M.configure(walls, prefs)
 	end
 end
 
-function M.attach(walls, parent)
-	for _, wall in pairs(walls.list) do
-		go.set_parent(wall.go, parent)
-	end
-end
-
 function M.celebrate(walls)
 	for _, wall in pairs(walls.list) do
 		wall.pulse = 1
@@ -223,24 +243,24 @@ local function stepSide(wall, eye, k)
 	end
 end
 
--- Moves a layer toward its goal by at most `step` and uploads it as bytes when anything moved.
+-- Moves a moving layer toward its goal by at most `step` and uploads it; it rests on arrival.
 local function easeLayer(layer, w, h, step)
-	local now, goal, changed = layer.now, layer.goal, layer.dirty
+	if not layer.moving then
+		return
+	end
+	local now, goal, stream, moving = layer.now, layer.goal, layer.stream, false
 	for i = 1, #now do
 		local v, g = now[i], goal[i]
 		if v ~= g then
-			now[i] = v < g and math.min(g, v + step) or math.max(g, v - step)
-			changed = true
+			v = v < g and math.min(g, v + step) or math.max(g, v - step)
+			now[i], stream[i] = v, math.floor(v * 255 + 0.5)
+			moving = true
 		end
 	end
-	if changed then
-		local bytes = {}
-		for i = 1, #now do
-			bytes[i] = math.floor(now[i] * 255 + 0.5)
-		end
-		resources.updateTexture(layer.texture, w, h, bytes)
+	layer.moving = moving
+	if moving then
+		resources.texture(layer.texture, w, h, layer.texels)
 	end
-	layer.dirty = false
 end
 
 local function stepCells(wall, step)
@@ -258,15 +278,6 @@ function M.step(walls, dt, eye)
 		wall.pulse = math.max(0, wall.pulse - PULSE_RATE * dt)
 		wall.glow = motion.approach(wall.glow, wall.matched and 1 or 0, k_fade)
 		go.set(wall.mesh, "opacity", vmath.vector4(wall.opacity, wall.pulse, wall.glow, 0))
-	end
-end
-
-function M.destroy(walls)
-	for _, wall in pairs(walls.list) do
-		go.delete(wall.go)
-	end
-	for _, path in ipairs(walls.owned) do
-		resources.release(path)
 	end
 end
 
