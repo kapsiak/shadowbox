@@ -15,6 +15,12 @@ uniform fs_uniforms
     mediump vec4 window_light;
     // x: seconds, y: window aspect (width / height), z: 1 to keep the dust still
     mediump vec4 clock;
+    // rgb: a soft glow behind the board, a: its strength
+    mediump vec4 glow;
+    // rgb: the colour of an overhead spotlight on the board and its pool of light, a: its strength
+    mediump vec4 stage;
+    // rgb: the colour of a faint isometric lattice, a: its strength (it fades out behind the board)
+    mediump vec4 lattice;
 };
 
 float hash(vec2 p)
@@ -64,6 +70,31 @@ float dust(vec2 p, float t)
     return total;
 }
 
+// A soft cone of light from above the screen down to the board's floor, and the pool it makes.
+float beam(vec2 p)
+{
+    float floor_y = -0.22;
+    float t = clamp((0.6 - p.y) / (0.6 - floor_y), 0.0, 1.0);
+    float half_width = mix(0.07, 0.4, t);
+    float across = 1.0 - smoothstep(half_width * 0.45, half_width, abs(p.x));
+    return across * mix(0.4, 1.0, t) * (1.0 - smoothstep(floor_y - 0.02, floor_y - 0.08, p.y));
+}
+
+float pool(vec2 p)
+{
+    return 1.0 - smoothstep(0.15, 1.0, length((p - vec2(0.0, -0.22)) / vec2(0.55, 0.12)));
+}
+
+// Distance to the nearest line of an isometric lattice (vertical lines and lines at 30 and 150
+// degrees, meeting at shared points), in cells; `cells` rows of cells per screen height.
+float latticeDistance(vec2 p, float cells)
+{
+    vec2 q = p * cells;
+    vec3 along = vec3(q.x, dot(q, vec2(0.5, 0.866)), dot(q, vec2(-0.5, 0.866)));
+    vec3 d = abs(fract(along + 0.5) - 0.5);
+    return min(min(d.x, d.y), d.z);
+}
+
 void main()
 {
     float aspect = clock.y;
@@ -75,9 +106,18 @@ void main()
 
     float light = windowPatch(p, aspect);
     float lamp = 1.0 - smoothstep(0.0, 0.85, length(p * vec2(0.8, 1.2) - vec2(0.0, 0.1)));
-    color *= 1.0 + 0.08 * lamp;
+    color += glow.rgb * glow.a * lamp;
     color = mix(color, color * window_light.rgb * 1.5, light * window_light.a);
-    color += window_light.rgb * dust(p, t) * light * 0.25;
+    color += window_light.rgb * dust(p, t) * light * window_light.a;
+
+    float cone = beam(p);
+    color += stage.rgb * stage.a * (0.3 * cone + 0.8 * pool(p));
+    color += stage.rgb * dust(p, t) * cone * stage.a * 0.8;
+
+    float line_d = latticeDistance(p, 9.0);
+    float lines = 1.0 - smoothstep(0.0, 1.5 * fwidth(line_d), line_d);
+    float away = smoothstep(0.22, 0.7, length(p * vec2(0.75, 1.0)));
+    color = mix(color, lattice.rgb, lines * lattice.a * away);
 
     vec2 v = var_screen - 0.5;
     color *= 1.0 - 0.28 * smoothstep(0.3, 0.85, length(v * vec2(1.1, 1.0)));

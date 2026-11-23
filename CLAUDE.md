@@ -27,14 +27,15 @@ The working title lives only in `game.project` (`[project] title`) and is read a
 - `input/`: `actions` (Defold → raw events), `router` (controls claim input), `gestures`, `interpret`.
 - `view/`: `board_view` (pieces), `walls_view` (projection panels), `tray_view`, `thumbs` (live level
   thumbnails), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
-  `theme` (**all colours and lighting: restyle here**), `palette`.
+  `theme` (**all colours and lighting: restyle here**; looks are variants picked by `[theme] variant`
+  in `game.project`), `palette`.
 - `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout`, `sheets` content), `models`
   (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
 - `render/game.render_script`: background → `gui_back` (select screen) → board (panels, cubes,
-  glass multiplied over them) → tray → optional
+  glass blended over them) → tray → optional
   scaled-target blit → GUI.
 - `docs/mechanics.md`: agreed design for mechanics beyond silhouettes (not built yet).
-- `docs/art_direction.md`: the agreed theme (the shadow workshop); check visual, sound and UI work against it.
+- `docs/art_direction.md`: the agreed look (geometric) and its clarity rules; check visual, sound and UI work against it.
 - `levels/`: `index.lua` lists packs; each pack has `pack.lua` and level files; `showcase.lua` is the menu sculpture.
 
 ## Conventions
@@ -42,7 +43,7 @@ snake_case variables, camelCase functions, comments only where needed, Lua 5.1/L
 GUI scripts only draw what `ui/models` publishes; input decisions happen in `main` phases.
 Never commit or modify git; the user does that.
 
-## Status (end of second session)
+## Status (end of third session)
 Done: core model, rendering, camera (ortho snaps), drag with auto-settle, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -52,20 +53,25 @@ and sway. Saving: versioned format, two slots, boards dropped when their level c
 (0.5 s after changes settle, at least every 5 s, at once on solve, screen change, focus loss and
 quit); undo history is kept per level for the session only.
 
+Third session (art): the look is now `geometric` (`docs/art_direction.md`), with `workshop` and
+`gallery` kept as switchable variants. Pieces are one seamless body with bevels from a per-face
+tangent stream, glossy or lacquered (wood grain along each piece's long axis in the workshop);
+glass is frosted and blended in one pass. The board is an open box (walls stand on the floor at
+the floor's edge). The floor folds light, so glass casts tinted light there. Wall cells ease at a
+constant speed and merge with neighbours continuously. Interface: Outfit (OFL), chamfered keys on
+a solid lip that sink when pressed, side-column main menu on wide screens, chapter pages on the
+level select, controls sized to fit beside their labels. The panel GUI pools item nodes by slot
+(it used to run out of nodes).
+
 Next, in order:
-1. Mechanics prototype (`docs/mechanics.md`): channel fold and glass done (`levels/glass` is a
-   test pack); next, wall and glass legibility (see "Open" in `docs/mechanics.md`), then
-   draw the pattern channel.
-2. Art direction (`docs/art_direction.md`): the screens are done (paper, merged crisp shadows,
-   pencil contours split by wanted light, hatching for unwanted shadow, wooden frame) and the
-   theme is recoloured to the workshop palette. Still unchecked in play: glass light on paper,
-   contour swallowing and ink on match, focus outline, floor shadow, high contrast. Next: blocks
-   (lacquered wood, no seams, proper glass; tray glass reads opaque), room, interface and
-   typography, sound, then chapter navigation as the sketchbook.
+1. Art polish (`docs/art_direction.md`, "Open"): motion and sound for "satisfying" (snap, match,
+   solve), settings controls, wordmark, view icons.
+2. Mechanics prototype (`docs/mechanics.md`): ray inspection on hover, then draw the pattern
+   channel.
 3. Polish audit, including an engine-feature audit (window events, profiler, platform integrations).
 4. Content: real packs (`levels/towers` is a placeholder) and an authoring guide.
 5. Web/mobile builds and touch testing.
 
 Untested or known: touch gestures (twist direction), fullscreen toggle, WebGL1 `fwidth`, the
-save on focus loss and quit; the four view buttons share near-identical icons; the editor linter
-shows stale warnings (e.g. `board_view.present` arity, `.axis` field).
+save on focus loss and quit, key press sinking, stacked glass (blending depends on draw order);
+the editor linter shows stale warnings (e.g. `board_view.present` arity, `.axis` field).

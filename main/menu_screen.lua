@@ -8,11 +8,14 @@ local cameras = require "view.cameras"
 local sheets = require "main.sheets"
 local interpret = require "input.interpret"
 local models = require "ui.models"
+local panel_layout = require "ui.panel_layout"
 
 local M = {}
 
 local SPIN = math.rad(9)
 local INSETS = { left = 0, right = 0, top = 0.17, bottom = 0.4 }
+local SIDE_INSETS = { left = panel_layout.SIDE, right = 0.03, top = 0.12, bottom = 0.12 }
+local ZOOM, SIDE_ZOOM = 0.78, 1.15
 
 function M.enter(showcase, factories)
 	local buffers = piece_meshes.create(showcase)
@@ -25,7 +28,7 @@ function M.enter(showcase, factories)
 		display = { poses = showcase.solution, evaluation = rules.evaluate(showcase, state) },
 	}
 	screen.rig.goal.pitch = math.rad(-22)
-	screen.rig.goal.zoom, screen.rig.current.zoom = 0.78, 0.78
+	screen.rig.goal.zoom, screen.rig.current.zoom = ZOOM, ZOOM
 	return screen
 end
 
@@ -76,7 +79,10 @@ function M.present(screen, dt, info)
 		screen.rig.goal.yaw = screen.rig.goal.yaw + SPIN * dt
 	end
 	orbit.step(screen.rig, dt)
-	local position, rotation, fov, near, far = orbit.lens(screen.rig, w / h, INSETS)
+	local side = panel_layout.sideBySide(info)
+	local insets = side and SIDE_INSETS or INSETS
+	screen.rig.goal.zoom = side and SIDE_ZOOM or ZOOM
+	local position, rotation, fov, near, far = orbit.lens(screen.rig, w / h, insets)
 	cameras.set("board", position, rotation, fov, w / h, near, far)
 	board_view.configure(screen.board, info.settings)
 	board_view.present(screen.board, screen.display, nil, nil)

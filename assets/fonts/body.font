@@ -1,4 +1,4 @@
-font: "/assets/fonts/AlegreyaSans-Medium.ttf"
+font: "/assets/fonts/Outfit-Medium.ttf"
 material: "/builtins/fonts/font-df.material"
 size: 40
 output_format: TYPE_DISTANCE_FIELD

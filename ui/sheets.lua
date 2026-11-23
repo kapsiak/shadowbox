@@ -1,6 +1,7 @@
 -- The content of each text panel ("sheet"), as plain data. Pure: a sheet is
 -- { title, modal, items = { { id, kind = "button" | "toggle" | "slider", label, value, primary } } }.
--- Modal sheets dim the screen behind them and sit on a card; the main menu does not.
+-- Modal sheets dim the screen behind them and sit on a card; the main menu does not, and stands
+-- beside the scene on wide screens (`side`).
 local settings = require "game.settings"
 
 local M = {}
@@ -9,6 +10,7 @@ function M.mainMenu(title, can_continue)
 	return {
 		heading = title,
 		modal = false,
+		side = true,
 		items = {
 			{ id = "continue", kind = "button", label = can_continue and "Continue" or "Play", primary = true },
 			{ id = "levels", kind = "button", label = "Levels" },

@@ -65,7 +65,8 @@ end
 
 -- screen: { w, h, scale, safe, settings }; scroll: pixels scrolled down from the top.
 -- Returns { title, pages, banners, nodes, trail, calm, max_scroll, focus }, where each chapter
--- sits on a page { id, x, y, w, h, tilt } (centre, size, degrees) and focus is the scroll
+-- sits on a page { id, x, y, w, h, lean } (centre, size, and which way it may lean: 1 or -1)
+-- and focus is the scroll
 -- that brings the current level (the next one to play) to the middle of the screen.
 function M.compute(screen, catalog, saved, scroll)
 	local w, h, safe = screen.w, screen.h, screen.safe
@@ -73,7 +74,11 @@ function M.compute(screen, catalog, saved, scroll)
 	local margin = math.max(short * 0.04, 16 * screen.scale) + math.max(safe.left, safe.right)
 	local node = math.min(math.max(NODE_DP * screen.scale, short * 0.17), short * 0.28)
 	local usable = w - 2 * (margin + node * (TURN + 0.1))
-	local columns = math.max(2, math.min(MAX_COLUMNS, math.floor(usable / (node * CELL))))
+	local longest = 1
+	for _, pack in ipairs(catalog.packs) do
+		longest = math.max(longest, #pack.keys)
+	end
+	local columns = math.max(2, math.min(MAX_COLUMNS, longest, math.floor(usable / (node * CELL))))
 	local cell = math.min(usable / columns, node * CELL * 1.3)
 	local cx = w / 2
 	local left = cx - cell * columns / 2
@@ -122,7 +127,7 @@ function M.compute(screen, catalog, saved, scroll)
 		local page_bottom = previous.y - node * 0.75 - title_size * 0.2
 		layout.pages[#layout.pages + 1] = {
 			id = pack.id, x = cx, y = (page_top + page_bottom) / 2, w = page_w, h = page_top - page_bottom,
-			tilt = p % 2 == 0 and 0.4 or -0.4,
+			lean = p % 2 == 0 and 1 or -1,
 		}
 		y = previous.y - node * 0.75 - title_size * 1.8
 	end

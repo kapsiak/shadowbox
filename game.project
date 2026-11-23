@@ -34,3 +34,6 @@ input_method = HiddenInputField
 [html5]
 scale_mode = stretch
 
+
+[theme]
+variant = geometric

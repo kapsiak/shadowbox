@@ -7,6 +7,9 @@ local theme = require "view.theme"
 
 local ui = theme.ui
 local FACE, CARD, SHADOW, PRIMARY = theme.vec(ui.face), theme.vec(ui.card), theme.vec(ui.shadow), theme.vec(ui.primary)
+local PRIMARY_INK, PRIMARY_SHADOW = theme.vec(ui.primary_ink), theme.vec(ui.primary_shadow)
+local LIFT = ui.lift
+local PRESS = 0.94
 local INK, ACCENT, TRACK = theme.vec(ui.ink), theme.vec(ui.accent), theme.vec(ui.track)
 local DANGER, WHITE, DIM, FADE = theme.vec(ui.danger), theme.vec(ui.white), theme.vec(ui.dim), theme.vec(ui.fade)
 local FONT_SIZE = { title = 64, body = 40 }
@@ -76,7 +79,7 @@ local MAX_SEGMENTS = 4
 
 local function createItem()
 	local item = {
-		shadow = box("button_shadow", true), face = box("button", true), label = text("body"),
+		shadow = box(ui.card_shadow, true), face = box(ui.card_image, true), label = text("body"),
 		track = pill(), fill = pill(), knob_shadow = box("dot"), knob = box("dot"), scale = 1,
 		segments = {},
 	}
@@ -167,12 +170,15 @@ local function drawItem(item, spec, a)
 	item.segment_count = spec.segments and #spec.segments or 0
 	enableItem(item, true, control)
 	item.scale = item.scale + (1 - item.scale) * 0.25
-	local w, h = spec.w * item.scale, spec.h * item.scale
+	local pressed = (1 - item.scale) / (1 - PRESS)
+	local size = LIFT.sink and 1 or item.scale
+	local w, h = spec.w * size, spec.h * size
 	local face = spec.primary and PRIMARY or FACE
-	place(item.shadow, spec.x, spec.y - h * 0.05, w * 1.02, h * 1.1, withAlpha(SHADOW, a))
-	place(item.face, spec.x, spec.y, w, h, withAlpha(face, a))
+	local drop = LIFT.drop * spec.h
+	place(item.shadow, spec.x, spec.y - drop, w * (1 + LIFT.spread * 0.2), h * (1 + LIFT.spread), withAlpha(spec.primary and PRIMARY_SHADOW or SHADOW, a))
+	place(item.face, spec.x, spec.y - (LIFT.sink and drop * pressed or 0), w, h, withAlpha(face, a))
 	drawControl(item, spec, a)
-	local color = spec.danger and DANGER or INK
+	local color = spec.primary and PRIMARY_INK or spec.danger and DANGER or INK
 	if control == "tabs" then
 		return
 	elseif control then
@@ -185,8 +191,8 @@ end
 function init(self)
 	gui.set_render_order(8)
 	self.dim = box()
-	self.card_shadow = box("button_shadow", true)
-	self.card = box("button", true)
+	self.card_shadow = box(ui.card_shadow, true)
+	self.card = box(ui.card_image, true)
 	self.title = text("title")
 	self.heading = text("title")
 	self.items = {}
@@ -212,7 +218,7 @@ local function drawFrame(self, layout, a, w, h)
 	gui.set_enabled(self.heading, layout.heading ~= nil)
 	if layout.heading then
 		local t = layout.heading
-		writeText(self.heading, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a))
+		writeText(self.heading, "title", t.text, t.x, t.y, t.size, withAlpha(INK, a), t.align == "left" and gui.PIVOT_W or nil)
 	end
 end
 
@@ -233,7 +239,7 @@ function update(self, dt)
 	for i, spec in ipairs(specs) do
 		local item = slotFor(self, i, spec.id)
 		if pressed[spec.id] then
-			item.scale = 0.94
+			item.scale = PRESS
 		end
 		drawItem(item, spec, self.shown)
 	end

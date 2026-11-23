@@ -33,3 +33,23 @@ fragment_constants {
     w: 0.55
   }
 }
+fragment_constants {
+  name: "lip"
+  type: CONSTANT_TYPE_USER
+  value {
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    w: 0.0
+  }
+}
+fragment_constants {
+  name: "corner"
+  type: CONSTANT_TYPE_USER
+  value {
+    x: 10.0
+    y: 0.0
+    z: 0.0
+    w: 0.0
+  }
+}

@@ -15,10 +15,10 @@ local PULSE = 0.86
 local function createButton(id)
 	local shadow = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(shadow, "hud")
-	gui.play_flipbook(shadow, "button_shadow")
+	gui.play_flipbook(shadow, theme.ui.card_shadow)
 	local face = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(face, "hud")
-	gui.play_flipbook(face, "button")
+	gui.play_flipbook(face, theme.ui.card_image)
 	local icon = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_texture(icon, "hud")
 	gui.play_flipbook(icon, id)
@@ -83,11 +83,14 @@ local function draw(b)
 	local visible = b.shown > 0.01
 	gui.set_enabled(b.face, visible)
 	gui.set_enabled(b.shadow, visible)
-	local size = spec.size * b.scale
-	gui.set_screen_position(b.face, vmath.vector3(spec.x + slide, spec.y, 0))
-	gui.set_screen_position(b.shadow, vmath.vector3(spec.x + slide, spec.y - size * 0.05, 0))
+	local lift = theme.ui.lift
+	local pressed = (1 - b.scale) / (1 - PULSE)
+	local size = spec.size * (lift.sink and 1 or b.scale)
+	local drop = lift.drop * spec.size
+	gui.set_screen_position(b.face, vmath.vector3(spec.x + slide, spec.y - (lift.sink and drop * pressed or 0), 0))
+	gui.set_screen_position(b.shadow, vmath.vector3(spec.x + slide, spec.y - drop, 0))
 	gui.set_size(b.face, vmath.vector3(size, size, 0))
-	gui.set_size(b.shadow, vmath.vector3(size * 1.1, size * 1.1, 0))
+	gui.set_size(b.shadow, vmath.vector3(size * (1 + lift.spread), size * (1 + lift.spread), 0))
 	gui.set_size(b.icon, vmath.vector3(size * 0.62, size * 0.62, 0))
 	local face, icon, shadow = vmath.vector4(FACE), vmath.vector4(ICON), vmath.vector4(SHADOW)
 	face.w, shadow.w = face.w * b.shown, shadow.w * b.shown

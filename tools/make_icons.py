@@ -202,8 +202,42 @@ def button():
     shadow = Image.new("L", (SIZE * SS, SIZE * SS), 0)
     ImageDraw.Draw(shadow).polygon(paper_outline(9, 10, 0.0, 7), fill=255)
     shadow = shadow.resize((SIZE, SIZE), Image.LANCZOS).filter(ImageFilter.GaussianBlur(4))
-    black = Image.new("L", (SIZE, SIZE), 0)
-    Image.merge("RGBA", (black, black, black, shadow)).save(OUT / "button_shadow.png")
+    white = Image.new("L", (SIZE, SIZE), 255)
+    Image.merge("RGBA", (white, white, white, shadow)).save(OUT / "button_shadow.png")
+
+
+def tile():
+    """A lacquered tile: a lit top rim, a body darkening a little downward and a shaded foot.
+    Greyscale, tinted by the theme. 9-sliced at 30."""
+    mask = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((s(5), s(5), s(91), s(91)), radius=s(14), fill=255)
+    shade = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    sd = ImageDraw.Draw(shade)
+    for y in range(SIZE * SS):
+        t = y / (SIZE * SS)
+        sd.line((0, y, SIZE * SS, y), fill=int(255 * (0.9 - 0.12 * t)))
+    rim = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    ImageDraw.Draw(rim).rounded_rectangle((s(5), s(5), s(91), s(91)), radius=s(14), outline=255, width=6)
+    top = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    ImageDraw.Draw(top).rectangle((0, 0, SIZE * SS, s(30)), fill=255)
+    lit = Image.composite(Image.new("L", shade.size, 255), shade, Image.composite(rim, Image.new("L", rim.size, 0), top))
+    foot = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    ImageDraw.Draw(foot).rectangle((0, s(86), SIZE * SS, SIZE * SS), fill=255)
+    lit = Image.composite(Image.new("L", shade.size, 150), lit, Image.composite(rim, Image.new("L", rim.size, 0), foot))
+    save(Image.merge("RGBA", (lit, lit, lit, mask)), "tile")
+    shadow = Image.new("L", (SIZE, SIZE), 0)
+    ImageDraw.Draw(shadow).rounded_rectangle((10, 12, 86, 90), radius=16, fill=255)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(5))
+    white = Image.new("L", (SIZE, SIZE), 255)
+    Image.merge("RGBA", (white, white, white, shadow)).save(OUT / "tile_shadow.png")
+
+
+def key():
+    """A flat key with chamfered corners, like a bevelled cube; also its solid lip. 9-sliced at 30."""
+    img, d = canvas()
+    lo, hi, c = 4, 92, 18
+    d.polygon([(s(x), s(y)) for x, y in ((lo + c, lo), (hi - c, lo), (hi, lo + c), (hi, hi - c), (hi - c, hi), (lo + c, hi), (lo, hi - c), (lo, lo + c))], fill=WHITE)
+    save(img, "key")
 
 
 def main():
@@ -228,6 +262,8 @@ def main():
     lock()
     dot()
     button()
+    tile()
+    key()
 
 
 if __name__ == "__main__":

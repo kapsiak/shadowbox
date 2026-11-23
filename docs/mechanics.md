@@ -62,19 +62,20 @@ the same value drawn redundantly rather than a separate palette.
 First prototype: generalise `core/projection` to a fold with an operator, with glass mixing as
 the first new operator.
 
-## Open: legibility of glass (next session)
+## Open: legibility of glass
 
-The glass mechanics work, but the walls are hard to read. Diagnosis after the first prototype:
-- Red means both "red light" and "wrong" (extra light is drawn with the warn fill).
-- Correct and wrong cells differ only by comparing two hues (ring vs fill).
-- Glass multiplies the walls behind it on screen, so wall colours seen through a piece are altered.
-- Nothing links a wall cell to the cubes on its ray.
-- Pieces read as tinted plastic: interior seams show, the body is a flat wash.
+The first prototype's walls were hard to read. Status of the diagnosis:
+- Done: colour carries content only and status uses shape (hatching for unwanted light, the
+  target contour swallowed by a matching shadow).
+- Done: glass is frosted, blended in one pass in a deep version of its light's colour, with no
+  interior seams and bright edges. Walls seen through glass are dimmed, not recoloured, as behind
+  any piece. (Keeping glass off the panels with a stencil was tried and dropped: its colour
+  became too hard to see.)
+- Done: neutral screens (geometric look), so received light shows its true colour.
+- Open: nothing links a wall cell to the cubes on its ray. Next: ray inspection on hover
+  (highlight the ray's cubes, show the fold).
+- Open: stacked glass depends on draw order on screen (the walls show the true mix).
 
-Proposals, in suggested order: colour carries content only and status uses shape (settle on
-match, hatching for unwanted light); target as a thick frame, received light as a solid inset;
-keep glass off the panels (stencil); ray inspection on hover (highlight the ray's cubes, show
-the fold); a proper glass look (no interior seams, edges, fresnel). Teaching: one filter per
-ray before mixing.
+Teaching: one filter per ray before mixing.
 
 The pattern channel is folded and judged in core but not drawn; no level may use it until it is.
