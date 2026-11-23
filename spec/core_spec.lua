@@ -66,7 +66,7 @@ describe("level.parse", function()
 		local lvl = assert(parse({ { "AAB", "..B" }, { "A..", "..." } }, { A = "coral", B = "sky" }))
 		assert.same({ 3, 2, 2 }, lvl.size)
 		assert.equal(2, #lvl.pieces)
-		assert.same({ "light" }, lvl.channels)
+		assert.same({ "light" }, lvl.channels.front)
 		assert.same({ 0, 0, 0, 0, 7, 7 }, lvl.targets.front.layers.light)
 		assert.same({ 0, 0, 0, 7 }, lvl.targets.side.layers.light)
 	end)
@@ -92,9 +92,11 @@ describe("level.parse", function()
 			{ { { "A" } }, { A = { glass = "teal" } }, "unknown glass 'teal'" },
 			{ { { "A" } }, { A = { colour = "red" } }, "unknown property 'colour'" },
 			{ { { "A" } }, { A = { pattern = "grid" } }, "need a color" },
+			{ { { "A" } }, { A = "red" }, "unknown operator 'sum'", { walls = { front = "sum" } } },
+			{ { { "A" } }, { A = "red" }, "'top' is not a view", { walls = { top = "count" } } },
 		}
 		for _, case in ipairs(cases) do
-			local lvl, err = parse(case[1], case[2])
+			local lvl, err = parse(case[1], case[2], case[4])
 			assert.is_nil(lvl)
 			assert.truthy(err:find(case[3]), err)
 		end
@@ -116,9 +118,16 @@ describe("projection", function()
 
 	it("folds each channel independently", function()
 		local lvl = assert(parse({ { "AB" } }, { A = { glass = "magenta", pattern = "horizontal" }, B = { glass = "yellow", pattern = "vertical" } }))
-		assert.same({ "light", "pattern" }, lvl.channels)
+		assert.same({ "light", "pattern" }, lvl.channels.side)
 		assert.same({ 1 }, lvl.targets.side.layers.light)
 		assert.same({ 3 }, lvl.targets.side.layers.pattern)
+	end)
+
+	it("counts cubes on count walls and cancels pairs on parity walls", function()
+		local lvl = assert(parse({ { "AB" }, { "A." } }, { A = "coral", B = "sky" }, { walls = { front = "count", side = "parity" } }))
+		assert.same({ "count" }, lvl.channels.front)
+		assert.same({ 1, 1, 1, 0 }, lvl.targets.front.layers.count)
+		assert.same({ 0, 1 }, lvl.targets.side.layers.parity)
 	end)
 
 	it("judges a cell by every channel", function()

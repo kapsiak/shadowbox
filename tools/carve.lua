@@ -2,7 +2,7 @@
 --   luajit tools/carve.lua [-k min-max] [-t tries] [-o shown] [-n limit] [-r seed]
 --                          [-g colour,... [-q opaque] [-m mixes]] sculpture.lua
 -- Cuts a sculpture (a level file whose drawn cells may all share one letter; `pieces` is
--- ignored) into random pieces of min..max cubes, profiles each cut with the solver and prints
+-- ignored; `views`, `walls` and `rules` carry over) into random pieces of min..max cubes, profiles each cut with the solver and prints
 -- the best as level files: fewest solutions first, then the most search.
 -- With -g, all but `opaque` pieces become glass, each listed colour used once before repeats;
 -- -m keeps only cuts with at least that many wall cells lit by a mix (a colour no piece has).
@@ -194,13 +194,22 @@ local function toLevel(def, cells, at, size, owner, count, glass, opaque)
 	for p, material in ipairs(materials(colours(cells, at, owner, count), count, glass, opaque)) do
 		pieces[letters[p]] = material
 	end
-	return { name = def.name, views = def.views, rules = def.rules, pieces = pieces, layers = layers }
+	return { name = def.name, views = def.views, walls = def.walls, rules = def.rules, pieces = pieces, layers = layers }
 end
 
 local function format(def)
 	local out = { "return {", ('\tname = "%s",'):format(def.name or "Untitled") }
 	if def.views then
 		out[#out + 1] = ('\tviews = { "%s" },'):format(table.concat(def.views, '", "'))
+	end
+	if def.walls then
+		local parts = {}
+		for _, v in ipairs({ "front", "side", "top" }) do
+			if def.walls[v] then
+				parts[#parts + 1] = ('%s = "%s"'):format(v, def.walls[v])
+			end
+		end
+		out[#out + 1] = "\twalls = { " .. table.concat(parts, ", ") .. " },"
 	end
 	if def.rules and def.rules.use_all == false then
 		out[#out + 1] = "\trules = { use_all = false },"

@@ -65,14 +65,16 @@ end
 
 local allowed_keys = { color = true }
 for _, name in ipairs(channels.order) do
-	allowed_keys[channels[name].key] = true
+	if channels[name].key then
+		allowed_keys[channels[name].key] = true
+	end
 end
 
 local function readValue(key, spec)
 	local value = {}
 	for _, name in ipairs(channels.order) do
 		local channel = channels[name]
-		local word = spec[channel.key]
+		local word = channel.key and spec[channel.key]
 		value[name] = channel.default
 		if word ~= nil then
 			value[name] = channel.names[word]
@@ -110,13 +112,13 @@ local function readPiece(key, spec)
 	return { key = key, color = spec.color, value = value }
 end
 
--- Light always; any other channel once a piece sets it.
-local function usedChannels(pieces)
-	local names = {}
+-- A wall folds its operator, then any piece property channel once a piece sets it.
+local function usedChannels(pieces, operator)
+	local names = { operator }
 	for _, name in ipairs(channels.order) do
-		local used = name == "light"
+		local used = false
 		for _, piece in ipairs(pieces) do
-			used = used or piece.value[name] ~= channels[name].default
+			used = used or (channels[name].key and name ~= "light" and piece.value[name] ~= channels[name].default)
 		end
 		if used then
 			names[#names + 1] = name
@@ -135,6 +137,25 @@ local function readViews(views)
 	return views
 end
 
+-- Each view's operator: light unless the level names another.
+local function readWalls(walls, views)
+	walls = walls or {}
+	local out, listed = {}, {}
+	for _, v in ipairs(views) do
+		listed[v] = true
+		out[v] = walls[v] or "light"
+		if not channels.operators[out[v]] then
+			return nil, ("walls: unknown operator '%s'"):format(tostring(out[v]))
+		end
+	end
+	for v in pairs(walls) do
+		if not listed[v] then
+			return nil, ("walls: '%s' is not a view"):format(tostring(v))
+		end
+	end
+	return out
+end
+
 function M.parse(def, name)
 	if type(def) ~= "table" then
 		return nil, "level: expected a table"
@@ -146,6 +167,10 @@ function M.parse(def, name)
 	local views, views_err = readViews(def.views)
 	if not views then
 		return nil, views_err
+	end
+	local walls, walls_err = readWalls(def.walls, views)
+	if not walls then
+		return nil, walls_err
 	end
 
 	local specs = def.pieces or {}
@@ -181,10 +206,10 @@ function M.parse(def, name)
 		items[id] = { cells = cells, value = piece.value }
 	end
 
-	local names = usedChannels(pieces)
-	local targets = {}
+	local names, targets = {}, {}
 	for _, v in ipairs(views) do
-		targets[v] = projection.project(size, v, names, items)
+		names[v] = usedChannels(pieces, walls[v])
+		targets[v] = projection.project(size, v, names[v], items)
 	end
 
 	local rules = def.rules or {}
@@ -194,6 +219,7 @@ function M.parse(def, name)
 		pieces = pieces,
 		solution = solution,
 		views = views,
+		walls = walls,
 		channels = names,
 		targets = targets,
 		rules = { use_all = rules.use_all ~= false },

@@ -45,7 +45,7 @@ function M.evaluate(level, state)
 	end
 	local views, solved = {}, true
 	for _, v in ipairs(level.views) do
-		local current = projection.project(level.size, v, level.channels, items)
+		local current = projection.project(level.size, v, level.channels[v], items)
 		views[v] = projection.compare(level.targets[v], current)
 		solved = solved and views[v].matches
 	end

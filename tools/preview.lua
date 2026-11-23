@@ -17,7 +17,9 @@ end
 local glyphs = {
 	light = { [0] = "#", "r", "g", "y", "b", "m", "c", "." },
 	pattern = { [0] = ".", "-", "|", "+" },
+	parity = { [0] = ".", "#" },
 }
+glyphs.count = setmetatable({ [0] = "." }, { __index = function(_, n) return tostring(n) end })
 
 local function layerRows(proj, name)
 	local rows = {}
@@ -34,9 +36,10 @@ end
 local function printSideBySide(level_data)
 	local columns, width, height = {}, {}, 0
 	for _, v in ipairs(level_data.views) do
-		for _, name in ipairs(level_data.channels) do
+		local names = level_data.channels[v]
+		for _, name in ipairs(names) do
 			local column = layerRows(level_data.targets[v], name)
-			table.insert(column, 1, #level_data.channels > 1 and v .. " " .. name or v)
+			table.insert(column, 1, (#names > 1 or name ~= "light") and v .. " " .. name or v)
 			local w = 0
 			for _, row in ipairs(column) do
 				w = math.max(w, #row)
@@ -69,9 +72,9 @@ local function preview(path)
 	print(("%s  (%s)  %dx%dx%d"):format(lvl.name, path, s[1], s[2], s[3]))
 	for _, p in ipairs(lvl.pieces) do
 		local look = p.color or ""
-		for _, name in ipairs(lvl.channels) do
+		for _, name in ipairs(channels.order) do
 			local channel = channels[name]
-			for word, n in pairs(channel.names) do
+			for word, n in pairs(channel.names or {}) do
 				if n == p.value[name] then
 					look = look .. " " .. channel.key .. "=" .. word
 				end

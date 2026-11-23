@@ -59,12 +59,20 @@ local function mirrored(piece_shape)
 	return shape.new(cells)
 end
 
-local function valueKey(level, piece)
+local function valueKey(piece)
 	local parts = {}
-	for i, name in ipairs(level.channels) do
+	for i, name in ipairs(channels.order) do
 		parts[i] = piece.value[name]
 	end
 	return table.concat(parts, ":")
+end
+
+local function targetAt(level, v, i)
+	local t = {}
+	for _, name in ipairs(level.channels[v]) do
+		t[name] = level.targets[v].layers[name][i]
+	end
+	return t
 end
 
 -- Ray ids for every cell, one per view, and each ray's target value per channel.
@@ -87,35 +95,57 @@ local function buildRays(level)
 			end
 		end
 		for i = 1, target.w * target.h do
-			local t = {}
-			for _, name in ipairs(level.channels) do
-				t[name] = target.layers[name][i]
-			end
-			targets[offset + i] = t
+			targets[offset + i] = targetAt(level, v, i)
 		end
 		offset = offset + target.w * target.h
 	end
 	return rays, targets, count
 end
 
--- On an idempotent channel a ray folds to t only if every value on it leaves t unchanged.
-local function allowed(level, targets, ray, value)
-	for _, name in ipairs(level.channels) do
-		local channel, v, t = channels[name], value[name], targets[ray][name]
+-- Whether k cubes of `value` on a ray can be part of its fold to `target`. On an idempotent
+-- channel every value must leave the target unchanged; on a monotone one the cubes' own fold
+-- must not pass it.
+local function allowed(target, value, k)
+	for name, t in pairs(target) do
+		local channel, v = channels[name], value[name]
 		if channel.combine(v, v) == v and channel.combine(t, v) ~= t then
 			return false
+		end
+		if channel.monotone then
+			local x = channel.identity
+			for _ = 1, k do
+				x = channel.combine(x, v)
+			end
+			if x > t then
+				return false
+			end
 		end
 	end
 	return true
 end
 
-local function needy(level, target)
-	for _, name in ipairs(level.channels) do
-		if target[name] ~= channels[name].identity then
+local function needy(target)
+	for name, t in pairs(target) do
+		if t ~= channels[name].identity then
 			return true
 		end
 	end
 	return false
+end
+
+-- The most cubes a ray may hold, when a monotone channel of unit cubes bounds it.
+local function rayLimit(target)
+	return target.count
+end
+
+-- For rays whose value follows from their cube count alone: whether a final count matches.
+local function rayExact(target)
+	if target.count then
+		return function(n) return n == target.count end
+	end
+	if target.parity then
+		return function(n) return n % 2 == target.parity end
+	end
 end
 
 local function candidatesFor(level, piece, rays, targets)
@@ -132,23 +162,23 @@ local function candidatesFor(level, piece, rays, targets)
 			for y = -lo[2], size[2] - 1 - hi[2] do
 				for z = -lo[3], size[3] - 1 - hi[3] do
 					local pose = { cell = { x, y, z }, orient = n }
-					local indices, ray_set, ok = {}, {}, true
+					local indices, hits, ok = {}, {}, true
 					for i, c in ipairs(shape.cellsAt(piece.shape, pose)) do
 						local idx = grid.index(size, c)
 						indices[i] = idx
 						for _, r in ipairs(rays[idx]) do
-							ok = ok and allowed(level, targets, r, piece.value)
-							ray_set[r] = true
+							hits[r] = (hits[r] or 0) + 1
 						end
+					end
+					local ray_list, ray_hits = {}, {}
+					for r, k in pairs(hits) do
+						ok = ok and allowed(targets[r], piece.value, k)
+						ray_list[#ray_list + 1], ray_hits[#ray_list + 1] = r, k
 					end
 					local key = cellsKey(indices)
 					if ok and not seen[key] then
 						seen[key] = true
-						local ray_list = {}
-						for r in pairs(ray_set) do
-							ray_list[#ray_list + 1] = r
-						end
-						out[#out + 1] = { pose = pose, cells = indices, rays = ray_list, key = key }
+						out[#out + 1] = { pose = pose, cells = indices, rays = ray_list, hits = ray_hits, key = key }
 					end
 				end
 			end
@@ -178,7 +208,7 @@ local function hiddenCubes(level)
 			end
 			local same = true
 			for _, v in ipairs(level.views) do
-				local proj = projection.project(level.size, v, level.channels, others)
+				local proj = projection.project(level.size, v, level.channels[v], others)
 				same = same and projection.compare(level.targets[v], proj).matches
 			end
 			if same then
@@ -194,11 +224,7 @@ local function solidViews(level)
 	for _, v in ipairs(level.views) do
 		local target, solid = level.targets[v], true
 		for i = 1, target.w * target.h do
-			local t = {}
-			for _, name in ipairs(level.channels) do
-				t[name] = target.layers[name][i]
-			end
-			solid = solid and needy(level, t)
+			solid = solid and needy(targetAt(level, v, i))
 		end
 		if solid then
 			out[#out + 1] = v
@@ -216,7 +242,7 @@ local function buildPieces(level, rays, targets)
 		local orients, canonical = shapeInfo(piece.shape)
 		local mirror = mirrored(piece.shape)
 		local _, mirror_canonical = shapeInfo(mirror)
-		local group_key = canonical .. "|" .. valueKey(level, piece)
+		local group_key = canonical .. "|" .. valueKey(piece)
 		local entry = {
 			id = id, key = piece.key, piece = piece, orients = orients, canonical = canonical,
 			chiral = mirror_canonical ~= canonical, mirror_canonical = mirror_canonical,
@@ -246,10 +272,15 @@ function M.analyse(level, options)
 	local info = buildPieces(level, rays, targets)
 	local use_all = level.rules.use_all
 
-	local needy_rays = {}
+	local needy_rays, limits, exact_rays, exact = {}, {}, {}, {}
 	for r, t in ipairs(targets) do
-		if needy(level, t) then
+		if needy(t) then
 			needy_rays[#needy_rays + 1] = r
+		end
+		limits[r] = rayLimit(t)
+		exact[r] = rayExact(t)
+		if exact[r] then
+			exact_rays[#exact_rays + 1] = r
 		end
 	end
 
@@ -308,14 +339,17 @@ function M.analyse(level, options)
 		report.capped = report.solutions >= limit
 	end
 
+	-- Moves a candidate on or off the board; false when it overfills a bounded ray.
 	local function place(entry, i, delta)
-		local cand = entry.candidates[i]
+		local cand, fits_rays = entry.candidates[i], true
 		for _, idx in ipairs(cand.cells) do
 			occupied[idx] = delta > 0
 		end
-		for _, r in ipairs(cand.rays) do
-			ray_cover[r] = ray_cover[r] + delta
+		for j, r in ipairs(cand.rays) do
+			ray_cover[r] = ray_cover[r] + delta * cand.hits[j]
+			fits_rays = fits_rays and not (limits[r] and ray_cover[r] > limits[r])
 		end
+		return fits_rays
 	end
 
 	local function search()
@@ -339,6 +373,12 @@ function M.analyse(level, options)
 				return
 			end
 		end
+		-- A ray no remaining option reaches is closed: its value is final.
+		for _, r in ipairs(exact_rays) do
+			if not coverable[r] and not exact[r](ray_cover[r]) then
+				return
+			end
+		end
 		if not best then
 			return record()
 		end
@@ -352,8 +392,9 @@ function M.analyse(level, options)
 				break
 			end
 			chosen[best.id], last_in_group[group] = i, i
-			place(best, i, 1)
-			search()
+			if place(best, i, 1) then
+				search()
+			end
 			place(best, i, -1)
 		end
 		if not use_all and not report.capped then
