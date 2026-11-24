@@ -1,8 +1,9 @@
 -- Usage (from the project root):
 --   luajit tools/carve.lua [-k min-max] [-t tries] [-o shown] [-n limit] [-r seed]
 --                          [-g colour,... [-q opaque] [-m mixes]] sculpture.lua
--- Cuts a sculpture (a level file whose drawn cells may all share one letter; `pieces` is
--- ignored; `views`, `walls` and `rules` carry over) into random pieces of min..max cubes, profiles each cut with the solver and prints
+-- Cuts a sculpture (a level file whose drawn cells may all share one letter; `views`, `walls`
+-- and `rules` carry over; if `pieces` names a colour for each drawn letter, every piece is cut
+-- inside one letter's region and takes its colour) into random pieces of min..max cubes, profiles each cut with the solver and prints
 -- the best as level files: fewest solutions first, then the most search.
 -- With -g, all but `opaque` pieces become glass, each listed colour used once before repeats;
 -- -m keeps only cuts with at least that many wall cells lit by a mix (a colour no piece has).
@@ -25,7 +26,8 @@ local function readSculpture(path)
 	local def, err = source_data.eval(f:read("*a"), path)
 	f:close()
 	assert(def, err)
-	local cells, at = {}, {}
+	local cells, at, region = {}, {}, {}
+	local coloured = def.pieces and next(def.pieces) ~= nil
 	for y, layer in ipairs(def.layers) do
 		for z, row in ipairs(layer) do
 			for x = 1, #row do
@@ -33,12 +35,15 @@ local function readSculpture(path)
 					local c = { x - 1, y - 1, z - 1 }
 					cells[#cells + 1] = c
 					at[key(c)] = #cells
+					if coloured then
+						region[#cells] = assert(def.pieces[row:sub(x, x)], "no colour for " .. row:sub(x, x))
+					end
 				end
 			end
 		end
 	end
 	local size = { #def.layers[1][1], #def.layers, #def.layers[1] }
-	return def, cells, at, size
+	return def, cells, at, size, region
 end
 
 local function neighbours(cells, at, i)
@@ -53,18 +58,18 @@ local function neighbours(cells, at, i)
 end
 
 -- Grows pieces from the most cornered free cell; nil if a piece cannot reach `min` cubes.
-local function cut(cells, at, min, max)
+local function cut(cells, at, region, min, max)
 	local owner, count = {}, 0
-	local free = function(j)
-		return not owner[j]
+	local free = function(i, j)
+		return not owner[j] and region[i] == region[j]
 	end
 	while true do
 		local start, fewest
 		for i in ipairs(cells) do
-			if free(i) then
+			if not owner[i] then
 				local n = 0
 				for _, j in ipairs(neighbours(cells, at, i)) do
-					n = n + (free(j) and 1 or 0)
+					n = n + (free(i, j) and 1 or 0)
 				end
 				if not fewest or n < fewest or (n == fewest and math.random() < 0.5) then
 					start, fewest = i, n
@@ -81,7 +86,7 @@ local function cut(cells, at, min, max)
 			local frontier = {}
 			for _, m in ipairs(members) do
 				for _, j in ipairs(neighbours(cells, at, m)) do
-					if free(j) then
+					if free(m, j) then
 						frontier[#frontier + 1] = j
 					end
 				end
@@ -174,7 +179,7 @@ local function mixes(lvl, glass)
 	return n
 end
 
-local function toLevel(def, cells, at, size, owner, count, glass, opaque)
+local function toLevel(def, cells, at, size, region, owner, count, glass, opaque)
 	local letters, layers = {}, {}
 	for p = 1, count do
 		letters[p] = string.char(64 + p)
@@ -190,8 +195,16 @@ local function toLevel(def, cells, at, size, owner, count, glass, opaque)
 			layers[y][z] = table.concat(row)
 		end
 	end
+	local names = {}
+	if next(region) then
+		for i in ipairs(cells) do
+			names[owner[i]] = region[i]
+		end
+	else
+		names = colours(cells, at, owner, count)
+	end
 	local pieces = {}
-	for p, material in ipairs(materials(colours(cells, at, owner, count), count, glass, opaque)) do
+	for p, material in ipairs(materials(names, count, glass, opaque)) do
 		pieces[letters[p]] = material
 	end
 	return { name = def.name, views = def.views, walls = def.walls, rules = def.rules, pieces = pieces, layers = layers }
@@ -263,12 +276,12 @@ while i <= #arg do
 end
 math.randomseed(opts.seed)
 
-local def, cells, at, size = readSculpture(path)
+local def, cells, at, size, region = readSculpture(path)
 local results, seen = {}, {}
 for _ = 1, opts.tries do
-	local owner, count = cut(cells, at, opts.min, opts.max)
+	local owner, count = cut(cells, at, region, opts.min, opts.max)
 	if owner then
-		local lvl_def = toLevel(def, cells, at, size, owner, count, opts.glass, opts.opaque)
+		local lvl_def = toLevel(def, cells, at, size, region, owner, count, opts.glass, opts.opaque)
 		local text = format(lvl_def)
 		local lvl = level.parse(lvl_def)
 		local mixed = lvl and mixes(lvl, opts.glass) or 0
