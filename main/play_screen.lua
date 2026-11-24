@@ -141,7 +141,8 @@ function M.gesture(screen, g, intents)
 		if sheets.key(screen, g, intents, screen.info.settings.bindings) then
 			return
 		end
-		if g.kind == "key" and g.pressed and g.name == "menu" then
+		local escape = g.kind == "key" and g.pressed and g.name == "menu"
+		if escape or (g.kind == "tap" and sheets.outside(screen, g.x, g.y)) then
 			intents[#intents + 1] = { kind = "sheet", id = sheets.top(screen) == "rule" and "rule_next" or "resume" }
 		end
 		return

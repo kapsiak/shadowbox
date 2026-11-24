@@ -260,8 +260,33 @@ def app_icon(ink, accent):
         layer = layer.resize((w, h), Image.LANCZOS)
         img.paste(Image.new("RGBA", layer.size, rgb + (255,)), at, layer)
     out = OUT.parent.parent / "assets" / "app_icons"
-    img.save(out / "appicon.ico", sizes=[(n, n) for n in (16, 32, 48, 64, 128, 256)])
+    save_ico(img, out / "appicon.ico")
     img.save(out / "appicon.icns")
+
+
+def save_ico(img, path):
+    """Bob replaces the Windows exe's icons only with entries of the same size and layout as its
+    own: these eight sizes, each an uncompressed 32-bit bitmap with its transparency mask."""
+    import struct
+    sizes = (16, 24, 32, 48, 64, 96, 128, 256)
+    entries = []
+    for n in sizes:
+        px = img.resize((n, n), Image.LANCZOS).load()
+        rows = [px[x, y] for y in reversed(range(n)) for x in range(n)]
+        colour = b"".join(struct.pack("4B", b, g, r, a) for r, g, b, a in rows)
+        stride = (n + 31) // 32 * 4
+        mask = bytearray(stride * n)
+        for i, (_, _, _, a) in enumerate(rows):
+            if a == 0:
+                mask[i // n * stride + i % n // 8] |= 0x80 >> (i % 8)
+        header = struct.pack("<IiiHHIIiiII", 40, n, n * 2, 1, 32, 0, len(colour) + len(mask), 0, 0, 0, 0)
+        entries.append((n, header + colour + bytes(mask)))
+    offset = 6 + 16 * len(entries)
+    directory = struct.pack("<HHH", 0, 1, len(entries))
+    for n, data in entries:
+        directory += struct.pack("<BBBBHHII", n % 256, n % 256, 0, 0, 1, 32, len(data), offset)
+        offset += len(data)
+    path.write_bytes(directory + b"".join(data for _, data in entries))
 
 
 def rules():

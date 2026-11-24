@@ -58,6 +58,16 @@ function M.hit(screen, x, y)
 	return layout and hit.find(layout.items, x, y)
 end
 
+-- Whether (x, y) lies outside the top sheet's card; a tap there dismisses it, as Escape does.
+-- Sheets without a card (the main menu) are never dismissed.
+function M.outside(screen, x, y)
+	local card = screen.sheet_layout and screen.sheet_layout.card
+	if not card then
+		return false
+	end
+	return math.abs(x - card.x) > card.w / 2 or math.abs(y - card.y) > card.h / 2
+end
+
 local function itemById(screen, id)
 	for _, item in ipairs(screen.sheet_layout.items) do
 		if item.id == id then

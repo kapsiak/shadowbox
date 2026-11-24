@@ -62,6 +62,9 @@ function M.gesture(screen, g, intents)
 		return
 	end
 	if #screen.sheets > 1 then
+		if g.kind == "tap" and sheets.outside(screen, g.x, g.y) then
+			intents[#intents + 1] = { kind = "menu" }
+		end
 		return
 	end
 	screen.interpreter.screen_height = screen.info.h
