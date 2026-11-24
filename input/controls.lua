@@ -30,6 +30,7 @@ M.actions = {
 	{ id = "undo", label = "Undo", keys = { "z" }, button = "undo" },
 	{ id = "redo", label = "Redo", keys = { "y" }, button = "redo" },
 	{ id = "rules", label = "Rules", keys = { "h" }, button = "rules" },
+	{ id = "hint", label = "Hint", keys = { "t" } },
 	{ id = "confirm", label = "Next level", keys = { "enter" }, button = "next" },
 	{ id = "menu", label = "Menu", keys = { "escape" }, button = "menu", fixed = true },
 }
@@ -53,7 +54,7 @@ M.pages = {
 		{ "Tilt", "orbit_up", "orbit_down" }, { "Zoom", "zoom_in", "zoom_out" }, { "Peek", "peek" },
 	} },
 	{ id = "other", label = "Other", rows = {
-		{ "Undo, redo", "undo", "redo" }, { "Next level", "confirm" }, { "Rules", "rules" },
+		{ "Undo, redo", "undo", "redo" }, { "Next level", "confirm" }, { "Rules", "rules" }, { "Hint", "hint" },
 	} },
 }
 

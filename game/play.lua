@@ -58,9 +58,9 @@ function M.new(level, saved)
 	return { level = level, history = history.new(M.fitting(level, saved)), selected = nil, drag = nil, held = {} }
 end
 
--- Returns to a session left earlier, keeping its history but nothing in hand.
+-- Returns to a session left earlier, keeping its history but nothing in hand or hinted.
 function M.resume(s)
-	s.selected, s.drag = nil, nil
+	s.selected, s.drag, s.hint = nil, nil, nil
 	return s
 end
 
@@ -83,6 +83,112 @@ local function commit(s, command)
 		return false, reason
 	end
 	history.push(s.history, state.apply(M.current(s), outcome))
+	return true
+end
+
+-- The grid indices of the cells piece `id` covers at `pose`, as a set.
+local function cellSet(level, id, pose)
+	local set = {}
+	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
+		set[grid.index(level.size, c)] = true
+	end
+	return set
+end
+
+-- Whether piece `id` covers its solution cells, in whatever orientation.
+local function inPlace(level, poses, id)
+	local pose = poses[id]
+	if not pose then
+		return false
+	end
+	local target = cellSet(level, id, level.solution[id])
+	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
+		if not target[grid.index(level.size, c)] then
+			return false
+		end
+	end
+	return true
+end
+
+-- Whether piece `id` at `pose` covers any cell in `set`.
+local function overlaps(level, id, pose, set)
+	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
+		if set[grid.index(level.size, c)] then
+			return true
+		end
+	end
+	return false
+end
+
+-- Pieces bottom up by their solution cells: lowest layer first, then more cells on that layer.
+local function hintOrder(level)
+	local keys, order = {}, {}
+	for id, pose in ipairs(level.solution) do
+		local low, count = math.huge, 0
+		for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
+			if c[2] < low then
+				low, count = c[2], 1
+			elseif c[2] == low then
+				count = count + 1
+			end
+		end
+		keys[id], order[id] = { low, -count }, id
+	end
+	table.sort(order, function(a, b)
+		local ka, kb = keys[a], keys[b]
+		if ka[1] ~= kb[1] then
+			return ka[1] < kb[1]
+		end
+		if ka[2] ~= kb[2] then
+			return ka[2] < kb[2]
+		end
+		return a < b
+	end)
+	return order
+end
+
+-- The hinted piece while it is away from its solution cells, else nil.
+local function shownHint(s, poses)
+	local id = s.hint and s.hint.piece
+	return id and not inPlace(s.level, poses, id) and id or nil
+end
+
+-- Hints the lowest piece not yet in its solution cells (level.solution): pieces in its way go
+-- back to the tray as one undoable step, and a piece in the tray turns to its solution
+-- orientation. While a hint is showing it stays. Returns whether a new hint was given.
+function M.hint(s)
+	local current = M.current(s)
+	if s.drag or shownHint(s, current.poses) then
+		return false
+	end
+	local id
+	for _, candidate in ipairs(hintOrder(s.level)) do
+		if not inPlace(s.level, current.poses, candidate) then
+			id = candidate
+			break
+		end
+	end
+	if not id then
+		return false
+	end
+	local target = cellSet(s.level, id, s.level.solution[id])
+	local poses, blocked = {}, false
+	for other, pose in pairs(current.poses) do
+		if other ~= id and overlaps(s.level, other, pose, target) then
+			blocked = true
+			s.held[other] = pose.orient
+		else
+			poses[other] = pose
+		end
+	end
+	if blocked then
+		history.push(s.history, { poses = poses })
+	end
+	if not poses[id] then
+		s.held[id] = s.level.solution[id].orient
+	end
+	s.selected = nil
+	s.hint = { piece = id, at = s.history.at }
 	return true
 end
 
@@ -294,6 +400,9 @@ end
 function M.undo(s)
 	s.drag = nil
 	history.undo(s.history)
+	if s.hint and s.history.at < s.hint.at then
+		s.hint = nil
+	end
 end
 
 function M.redo(s)
@@ -302,13 +411,15 @@ function M.redo(s)
 end
 
 -- What to show this frame: committed poses with the drag preview laid over them.
--- Returns { poses, invalid = piece id or nil, dragging = piece id or nil, evaluation }, the
+-- Returns { poses, invalid = piece id or nil, dragging = piece id or nil, evaluation,
+-- hint = { piece, pose } or nil (a ghost to show) }, the
 -- same table until the state or the drag candidate changes (both are replaced, never mutated).
 function M.display(s)
 	local current, d = M.current(s), s.drag
 	local candidate, dragging = d and d.candidate, d and d.piece
 	local cached = s.shown
-	if cached and cached.state == current and cached.candidate == candidate and cached.dragging == dragging then
+	if cached and cached.state == current and cached.candidate == candidate and cached.dragging == dragging
+		and cached.hint == s.hint then
 		return cached.display
 	end
 	local poses = {}
@@ -326,7 +437,9 @@ function M.display(s)
 		dragging = dragging,
 		evaluation = rules.evaluate(s.level, invalid and current or { poses = poses }),
 	}
-	s.shown = { state = current, candidate = candidate, dragging = dragging, display = display }
+	local hinted = shownHint(s, poses)
+	display.hint = hinted and { piece = hinted, pose = s.level.solution[hinted] }
+	s.shown = { state = current, candidate = candidate, dragging = dragging, hint = s.hint, display = display }
 	return display
 end
 

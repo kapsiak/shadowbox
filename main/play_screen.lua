@@ -223,6 +223,12 @@ local function applyCamera(screen, intent, dt)
 	return true
 end
 
+local function giveHint(screen)
+	if not screen.solved and play.hint(screen.session) then
+		audio.cue("unlock")
+	end
+end
+
 -- Applies one intent; returns a request for the app (see main.script) or nil.
 function M.apply(screen, intent, dt)
 	local s, kind = screen.session, intent.kind
@@ -237,6 +243,10 @@ function M.apply(screen, intent, dt)
 		screen.session = play.new(s.level)
 		screen.solved = false
 		screen.sheets = {}
+		return nil
+	elseif kind == "sheet" and intent.id == "hint" then
+		sheets.close(screen)
+		giveHint(screen)
 		return nil
 	elseif kind == "sheet" or kind == "setting" or kind == "tab" or kind == "rebind" then
 		return sheets.apply(screen, intent)
@@ -257,6 +267,8 @@ function M.apply(screen, intent, dt)
 		return screen.solved and { to = "next" } or nil
 	elseif screen.solved and kind ~= "hover" and kind ~= "undo" then
 		return nil
+	elseif kind == "hint" then
+		giveHint(screen)
 	elseif kind == "hover" then
 		screen.hovered = intent.piece
 	elseif kind == "tap" then

@@ -14,7 +14,7 @@
 --                                 `swipe_step` pixels: sideways about vertical, up or down tips
 --   nudge { along, delta }        along = "vertical" | "drag" (the drag plane's axis)
 --   peek { on }                   while held, pieces fade so the walls show
---   undo, redo, remove, menu, next, rules
+--   undo, redo, remove, menu, next, rules, hint
 -- Intents are shared and must not be changed by their receivers.
 local hot = require "core.hot"
 local controls = require "input.controls"
@@ -45,6 +45,7 @@ local action_intents = {
 	undo = { kind = "undo" },
 	redo = { kind = "redo" },
 	rules = { kind = "rules" },
+	hint = { kind = "hint" },
 	confirm = { kind = "next" },
 	menu = { kind = "menu" },
 }

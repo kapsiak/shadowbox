@@ -1,6 +1,6 @@
 -- Presents the board: pieces at their displayed poses, and the projection walls (view/walls_view).
 -- Pieces move on springs, lift while dragged, shake when a move is refused, and hop when the
--- level is solved. Owns its game objects; rebound to another level in place (see
+-- level is solved. A hint shows as a ghost of a piece at its solution pose. Owns its game objects; rebound to another level in place (see
 -- view/board_pool), it replaces its piece objects and keeps the walls. Never touches game state.
 local hot = require "core.hot"
 local orient = require "core.orient"
@@ -35,9 +35,41 @@ local function cellCenter(c)
 end
 
 -- An empty board under `parent`, a game object whose transform places it in the world.
--- factories: { piece, glass_piece, panel } urls.
+-- factories: { piece, glass_piece, ghost_piece, panel } urls.
 function M.create(factories, parent)
-	return { factories = factories, parent = parent, pieces = {}, time = 0, presented = {}, walls = walls_view.create(factories.panel, parent) }
+	local ghost = factory.create(factories.ghost_piece)
+	go.set_parent(ghost, parent)
+	local mesh = msg.url(nil, ghost, "mesh")
+	piece_look.applyLight(mesh)
+	go.set(mesh, "fx", vmath.vector4(0, 1, 0, 0))
+	msg.post(mesh, "disable")
+	return {
+		factories = factories, parent = parent, pieces = {}, time = 0, presented = {},
+		ghost = { go = msg.url(nil, ghost, nil), mesh = mesh, hint = nil },
+		walls = walls_view.create(factories.panel, parent),
+	}
+end
+
+-- Shows `hint` ({ piece, pose } or nil) as a ghost; its look follows the pieces'.
+local function showGhost(view, hint)
+	local ghost = view.ghost
+	if not hint then
+		if ghost.hint then
+			msg.post(ghost.mesh, "disable")
+		end
+		ghost.hint = nil
+		return
+	end
+	if not ghost.hint then
+		msg.post(ghost.mesh, "enable")
+	end
+	ghost.hint = hint
+	go.set(ghost.mesh, "vertices", view.buffers[hint.piece])
+	if view.look then
+		piece_look.apply(ghost.mesh, view.level, hint.piece, view.look)
+	end
+	go.set_position(cellCenter(hint.pose.cell), ghost.go)
+	go.set_rotation(M.poseRotation(hint.pose.orient), ghost.go)
 end
 
 local function clearPieces(view)
@@ -50,7 +82,8 @@ end
 -- Shows `level` with no pieces placed; buffers: its piece meshes by piece id.
 function M.bind(view, level, buffers)
 	clearPieces(view)
-	view.level, view.time, view.look, view.presented = level, 0, nil, {}
+	showGhost(view, nil)
+	view.level, view.buffers, view.time, view.look, view.presented = level, buffers, 0, nil, {}
 	for _, piece in ipairs(level.pieces) do
 		local object = factory.create(palette.isGlass(piece) and view.factories.glass_piece or view.factories.piece)
 		local id = msg.url(nil, object, nil)
@@ -71,6 +104,7 @@ end
 -- Removes the pieces and hides the walls until the next bind.
 function M.hide(view)
 	clearPieces(view)
+	showGhost(view, nil)
 	walls_view.hide(view.walls)
 end
 
@@ -89,7 +123,7 @@ local function setGoal(p, pose, lifted, selected, invalid, hovered)
 	end
 end
 
--- display: { poses, invalid, dragging, evaluation } from game/play (a new table whenever it
+-- display: { poses, invalid, dragging, evaluation, hint } from game/play (a new table whenever it
 -- changes); selected, hovered: piece ids or nil. Does nothing when none of them changed.
 function M.present(view, display, selected, hovered)
 	if not memo.changed(view.presented, display, selected, hovered, view.colors) then
@@ -99,6 +133,10 @@ function M.present(view, display, selected, hovered)
 		setGoal(p, display.poses[id], id == display.dragging,
 			id == selected and 1 or 0, id == display.invalid and 1 or 0, id == hovered and 1 or 0)
 	end
+	local hint, shown = display.hint, view.ghost.hint
+	if (hint and hint.piece) ~= (shown and shown.piece) or not state.samePose(hint and hint.pose, shown and shown.pose) then
+		showGhost(view, display.hint)
+	end
 	local focus = selected and { piece = selected, color = palette.pieceColor(view.level.pieces[selected], view.colors) }
 	walls_view.present(view.walls, display, focus)
 end
@@ -107,7 +145,13 @@ end
 function M.configure(view, prefs)
 	view.calm = prefs.reduced_motion
 	view.colors = prefs.colors
-	view.look = piece_look.update(view.look, view.pieces, view.level, prefs)
+	local look = piece_look.update(view.look, view.pieces, view.level, prefs)
+	if look ~= view.look then
+		if view.ghost.hint then
+			piece_look.apply(view.ghost.mesh, view.level, view.ghost.hint.piece, look)
+		end
+	end
+	view.look = look
 	walls_view.configure(view.walls, prefs)
 end
 

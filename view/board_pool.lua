@@ -11,7 +11,7 @@ local resources = require "view.resources"
 
 local M = {}
 
--- factories: { piece, glass_piece, panel, anchor } urls.
+-- factories: { piece, glass_piece, ghost_piece, panel, anchor } urls.
 function M.new(factories)
 	return { factories = factories, slots = {} }
 end

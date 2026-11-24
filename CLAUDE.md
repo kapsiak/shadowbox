@@ -96,7 +96,7 @@ URL (`msg.url`), never by hash id: `go.set_position` and friends allocate a URL 
 hash. vmath calls allocate; per-frame math writes into vectors kept for the purpose. The wall shader reads only the quadrant's neighbours
 (`materials/panel.fp`, one packed `shape` layer), about 9 texture reads per pixel.
 
-## Status (ninth session)
+## Status (tenth session)
 Done: core model, rendering, camera (ortho snaps), drag by contact placement, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -194,8 +194,23 @@ buttons share one action table (`input/interpret`), held actions (peek) release 
 tooltip and panel nodes start disabled (a stray white key showed at the origin). Specs and
 luacheck clean; the user ran the game and it idles at ~3% CPU.
 
+Tenth session (polish): main menu Credits sheet and, on desktop only, Quit (saves, then exits),
+side by side (a sheet item with `inline` shares the row before it); the version sits bottom right;
+"N of M levels solved" under the title (`progress.totals`). Release zips carry
+`legal/Defold-LICENSE.txt` and the Outfit OFL (the Defold License requires shipping its text).
+Sound and music are silent while the window is unfocused or minimised. Completing a chapter for
+the first time opens a "Chapter complete" card after the celebration (no ending screen: more
+levels may come). Hints (pause menu, key T; unmarked on the select): the lowest piece not in its
+`level.solution` cells, blockers back to the tray as one undo step, a tray piece turned to its
+solution orientation, shown as a ghost (`view/ghost_piece.go`, piece shader at full x-ray in the
+glass pass) until placed; cleared by undo past it, restart and leaving. Paragraph height counts
+line breaks. luacheck on PATH runs under Lua 5.5 and fails to load; no 5.1 copy is installed.
+
 Next, in order:
-0. On the phone: the performance pass (warmth, Medium quality, the level select), peek, demo build.
+0. In the game: credits line breaks look wrong (ask the user what they see); the hint ghost's
+   readability (same look as peek ghosts; beside glass), the chapter card, the Credits/Quit row,
+   the seven-item pause menu on a phone.
+0b. On the phone: the performance pass (warmth, Medium quality, the level select), peek, demo build.
 1. On the phone (rebuild the web build first): tray turning, second-finger turn directions (is
    "above tips away" natural?), no accidental second taps during a pinch, no Keys tab.
 2. Play-test Towers, Overhead, Glass, Counting, Parity and Ledger; reorder by feel.

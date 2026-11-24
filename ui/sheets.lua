@@ -86,6 +86,7 @@ function M.pause()
 		modal = true,
 		items = {
 			{ id = "resume", kind = "button", label = "Resume", primary = true },
+			{ id = "hint", kind = "button", label = "Hint" },
 			{ id = "restart", kind = "button", label = "Restart level" },
 			{ id = "rules", kind = "button", label = "Rules" },
 			{ id = "levels", kind = "button", label = "Levels" },

@@ -293,6 +293,7 @@ function init(self)
 		piece = msg.url("#piece_factory"), panel = msg.url("#panel_factory"), tray_piece = msg.url("#tray_piece_factory"),
 		anchor = msg.url("#anchor_factory"),
 		glass_piece = msg.url("#glass_piece_factory"), glass_tray_piece = msg.url("#glass_tray_piece_factory"),
+		ghost_piece = msg.url("#ghost_piece_factory"),
 	}
 	self.pool = board_pool.new(self.factories)
 	self.thumb_atlas = thumbs.createAtlas()
