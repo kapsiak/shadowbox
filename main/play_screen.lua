@@ -25,6 +25,9 @@ local TRAY_BACKDROP = "/tray_backdrop#mesh"
 -- does not hover), until it leaves or presses.
 local TIP_DELAY = 0.45
 
+local LIFT_DP = 70
+local SWIPE_DP = 50
+
 -- The tooltip for the button under the pointer: its action and first key.
 local function tipFor(tip, bindings)
 	if not tip or tip.pressed or tip.t < TIP_DELAY then
@@ -153,6 +156,8 @@ function M.gesture(screen, g, intents)
 	screen.interpreter.screen_height = screen.info.h
 	screen.interpreter.sensitivity = prefs.sensitivity
 	screen.interpreter.invert = prefs.invert
+	screen.interpreter.lift = LIFT_DP * screen.info.scale
+	screen.interpreter.swipe_step = SWIPE_DP * screen.info.scale
 	interpret.gesture(screen.interpreter, g, function(x, y)
 		return pickAt(screen, x, y)
 	end, intents)

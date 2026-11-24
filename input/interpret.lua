@@ -10,8 +10,8 @@
 --   hover { piece }               piece under a pointer moving with no button held
 --   grab { piece, cell, from_tray }, drag { x, y }, drop { x, y, cancelled }
 --   turn { about, dir }           about = "vertical" | "right" | "toward" (camera-relative);
---                                 while dragging, a second finger's tap beside the dragging
---                                 finger turns about vertical, above or below it tips
+--                                 while dragging, a second finger's swipe turns a step per
+--                                 `swipe_step` pixels: sideways about vertical, up or down tips
 --   nudge { along, delta }        along = "vertical" | "drag" (the drag plane's axis)
 --   undo, redo, remove, menu, next
 local hot = require "core.hot"
@@ -60,9 +60,10 @@ local buttons = {
 }
 
 -- screen_height normalizes drag distances so sensitivity is resolution independent.
--- sensitivity scales camera drags; invert flips their direction.
+-- sensitivity scales camera drags; invert flips their direction. A touch drag aims `lift`
+-- pixels above the finger, so the piece stays in sight.
 function M.new(screen_height)
-	return { screen_height = screen_height, drag = nil, sensitivity = 1, invert = false }
+	return { screen_height = screen_height, drag = nil, sensitivity = 1, invert = false, lift = 0, swipe_step = 1 }
 end
 
 local function onKey(g, out)
@@ -86,7 +87,8 @@ end
 local function onDragStart(state, g, pick, out)
 	local hit = g.button == "primary" and pick(g.x, g.y)
 	if hit then
-		state.drag, state.finger = "piece", { x = g.x, y = g.y }
+		state.drag = "piece"
+		state.raise = g.touch and state.lift or 0
 		out[#out + 1] = { kind = "grab", piece = hit.piece, cell = hit.cell, from_tray = hit.from_tray, x = g.x, y = g.y }
 	else
 		state.drag = "orbit"
@@ -115,22 +117,36 @@ end
 
 local function onDragMove(state, g, out)
 	if state.drag == "piece" and g.button == "primary" then
-		state.finger = { x = g.x, y = g.y }
-		out[#out + 1] = { kind = "drag", x = g.x, y = g.y }
+		out[#out + 1] = { kind = "drag", x = g.x, y = g.y + state.raise }
 	elseif state.drag == "orbit" and not g.multi then
 		local scale = ORBIT_PER_SCREEN / state.screen_height * state.sensitivity * (state.invert and -1 or 1)
 		out[#out + 1] = { kind = "orbit", yaw = -g.dx * scale, pitch = g.dy * scale }
 	end
 end
 
--- A second finger's tap while dragging turns the piece: beside the dragging finger it turns
--- about the vertical axis towards that side, above or below it tips the piece away or toward.
-local function secondTapTurn(state, g)
-	local dx, dy = g.x - state.finger.x, g.y - state.finger.y
-	if math.abs(dx) >= math.abs(dy) then
-		return { kind = "turn", about = "vertical", dir = dx > 0 and 1 or -1 }
+-- A second finger's swipe while dragging turns the piece a step per `swipe_step` of travel along
+-- the swipe's first direction: sideways turns about vertical, up or down tips. Swiping back undoes.
+local function swipeTurns(state, g, out)
+	local s = state.swipe or { x = 0, y = 0, done = 0 }
+	state.swipe = s
+	s.x, s.y = s.x + g.dx, s.y + g.dy
+	if not s.axis then
+		if math.max(math.abs(s.x), math.abs(s.y)) < state.swipe_step then
+			return
+		end
+		s.axis = math.abs(s.x) >= math.abs(s.y) and "x" or "y"
 	end
-	return { kind = "turn", about = "right", dir = dy > 0 and -1 or 1 }
+	local travel = s[s.axis]
+	local steps = (travel < 0 and -1 or 1) * math.floor(math.abs(travel) / state.swipe_step)
+	while s.done ~= steps do
+		local dir = steps > s.done and 1 or -1
+		s.done = s.done + dir
+		if s.axis == "x" then
+			out[#out + 1] = { kind = "turn", about = "vertical", dir = dir }
+		else
+			out[#out + 1] = { kind = "turn", about = "right", dir = -dir }
+		end
+	end
 end
 
 function M.gesture(state, g, pick, out)
@@ -143,11 +159,13 @@ function M.gesture(state, g, pick, out)
 		onDragMove(state, g, out)
 	elseif g.kind == "drag_end" and (g.button == "primary" or state.drag == "orbit") then
 		if dragging_piece then
-			out[#out + 1] = { kind = "drop", x = g.x, y = g.y }
+			out[#out + 1] = { kind = "drop", x = g.x, y = g.y + state.raise }
 		end
 		state.drag = nil
-	elseif g.kind == "second_tap" and dragging_piece then
-		out[#out + 1] = secondTapTurn(state, g)
+	elseif g.kind == "second_move" and dragging_piece then
+		swipeTurns(state, g, out)
+	elseif g.kind == "second_up" then
+		state.swipe = nil
 	elseif g.kind == "two_finger" and not dragging_piece then
 		out[#out + 1] = { kind = "zoom", factor = 1 / g.scale }
 		out[#out + 1] = { kind = "orbit", yaw = -g.twist, pitch = 0 }

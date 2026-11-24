@@ -1,6 +1,6 @@
 [project]
 title = Third Angle
-version = 0.1.0-alpha
+version = 0.2.0-alpha
 custom_resources = /levels
 dependencies#0 = https://github.com/subsoap/defos/archive/refs/heads/master.zip
 dependencies#1 = https://github.com/defold/extension-automation-bridge/archive/refs/tags/2.6.0.zip

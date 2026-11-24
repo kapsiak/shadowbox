@@ -73,22 +73,22 @@ describe("gestures", function()
 		return { kind = "touches", points = { ... } }
 	end
 
-	it("reports a quick second finger as a tap and moving fingers as a pinch", function()
+	it("reports a second finger lifting, and moving fingers as a pinch", function()
 		local rec = gestures.new(10)
 		local tapped = feedAll(rec, {
 			touches({ id = 1, x = 0, y = 0, pressed = true }),
 			touches({ id = 1, x = 0, y = 0 }, { id = 2, x = 100, y = 0, pressed = true }),
 			touches({ id = 1, x = 0, y = 0 }, { id = 2, x = 100, y = 0, released = true }),
 		})
-		assert.same({ "second_tap" }, kinds(tapped))
+		assert.same({ "second_up" }, kinds(tapped))
 
 		local pinched = feedAll(gestures.new(10), {
 			touches({ id = 1, x = 0, y = 0, pressed = true }, { id = 2, x = 100, y = 0, pressed = true }),
 			touches({ id = 1, x = 0, y = 0 }, { id = 2, x = 200, y = 0 }),
 			touches({ id = 1, x = 0, y = 0 }, { id = 2, x = 200, y = 0, released = true }),
 		})
-		assert.same({ "two_finger" }, kinds(pinched))
-		assert.equal(2, pinched[1].scale)
+		assert.same({ "second_move", "two_finger", "second_up" }, kinds(pinched))
+		assert.equal(2, pinched[2].scale)
 	end)
 
 	it("keeps a drag alive while a second button is clicked", function()
@@ -156,17 +156,19 @@ describe("interpret", function()
 		assert.equal(3, out[1].piece)
 	end)
 
-	it("turns a dragged piece by where a second finger taps", function()
+	it("turns a dragged piece a step per swipe of a second finger, and back", function()
 		local state, out = interpret.new(100), {}
+		state.swipe_step = 10
 		interpret.gesture(state, { kind = "drag_start", button = "primary", x = 50, y = 50 }, function() return { piece = 1 } end, out)
-		for _, at in ipairs({ { 90, 55 }, { 10, 45 }, { 55, 90 }, { 45, 10 } }) do
-			interpret.gesture(state, { kind = "second_tap", x = at[1], y = at[2] }, nil, out)
+		for _, d in ipairs({ { 12, 4 }, { 10, 9 }, { -15, 0 }, "up", { 3, 11 } }) do
+			local g = d == "up" and { kind = "second_up" } or { kind = "second_move", dx = d[1], dy = d[2] }
+			interpret.gesture(state, g, nil, out)
 		end
 		local turns = {}
-		for i = 2, 5 do
+		for i = 2, #out do
 			turns[#turns + 1] = out[i].about .. out[i].dir
 		end
-		assert.same({ "vertical1", "vertical-1", "right-1", "right1" }, turns)
+		assert.same({ "vertical1", "vertical1", "vertical-1", "vertical-1", "right-1" }, turns)
 	end)
 end)
 

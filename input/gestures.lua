@@ -8,9 +8,9 @@
 --   { kind = "hover", x, y }
 -- Gestures:
 --   tap { button, x, y }
---   drag_start { button, x, y }, drag_move { button, x, y, dx, dy, multi }, drag_end { button, x, y }
+--   drag_start { button, x, y, touch }, drag_move { button, x, y, dx, dy, multi }, drag_end { button, x, y }
 --   two_finger { scale, twist }        relative scale and twist angle (radians) since the last event
---   second_tap { x, y }                a quick touch by another finger while the first stays down
+--   second_move { dx, dy }, second_up  another finger moving while the first stays down; lifting it
 --   wheel { amount, start } (start: the first step of a scroll gesture), key { key, name, pressed, released }, hover { x, y } (pointer moved, no button)
 --
 -- On touch devices the first finger also arrives as the primary pointer; `multi` marks pointer
@@ -43,7 +43,7 @@ local function onPointer(rec, ev, out)
 	p.multi = p.multi or rec.multi
 	if not p.dragging and moved(rec, p) then
 		p.dragging = true
-		out[#out + 1] = { kind = "drag_start", button = ev.button, x = p.x0, y = p.y0 }
+		out[#out + 1] = { kind = "drag_start", button = ev.button, x = p.x0, y = p.y0, touch = next(rec.touches) ~= nil }
 		dx, dy = x - p.x0, y - p.y0
 	end
 	if p.dragging and (dx ~= 0 or dy ~= 0) then
@@ -90,10 +90,16 @@ end
 
 local function onTouches(rec, ev, out)
 	for _, t in ipairs(ev.points) do
+		local last = rec.touches[t.id]
+		local px, py = last and last.x, last and last.y
 		local known = track(rec, t)
+		local second = not isFirst(rec, known)
+		if second and px and not t.pressed and not t.released and (known.x ~= px or known.y ~= py) then
+			out[#out + 1] = { kind = "second_move", dx = known.x - px, dy = known.y - py }
+		end
 		if t.released then
-			if not isFirst(rec, known) and not moved(rec, known) and not known.pinched then
-				out[#out + 1] = { kind = "second_tap", x = t.x, y = t.y }
+			if second then
+				out[#out + 1] = { kind = "second_up" }
 			end
 			rec.touches[t.id] = nil
 		end
@@ -111,14 +117,7 @@ local function onTouches(rec, ev, out)
 	local pair = pairOf(active[1], active[2])
 	local last = rec.pair
 	if last and last.ids == pair.ids and last.distance > 0 then
-		pair.start = last.start
 		out[#out + 1] = { kind = "two_finger", scale = pair.distance / last.distance, twist = wrapAngle(pair.angle - last.angle) }
-		local start = pair.start
-		if math.abs(pair.distance / start.distance - 1) > 0.08 or math.abs(wrapAngle(pair.angle - start.angle)) > 0.12 then
-			active[1].pinched, active[2].pinched = true, true
-		end
-	else
-		pair.start = { distance = math.max(pair.distance, 1), angle = pair.angle }
 	end
 	rec.pair = pair
 end
