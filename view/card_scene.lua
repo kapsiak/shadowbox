@@ -54,7 +54,7 @@ function M.present(scene, level, rect, dt, prefs)
 	end
 	scene.time = scene.time + dt
 	local calm = prefs.reduced_motion
-	scene.grow = calm and 1 or motion.approach(scene.grow, 1, motion.blend(GROW_RATE, dt))
+	scene.grow = calm and 1 or motion.ease(scene.grow, 1, motion.blend(GROW_RATE, dt))
 	local sway = calm and 0 or SWAY * math.sin(scene.time * SWAY_RATE)
 	local rotation = vmath.quat_rotation_y(YAW + sway) * vmath.quat_rotation_x(PITCH)
 

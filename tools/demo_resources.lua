@@ -19,7 +19,7 @@ end
 local index = "/" .. (arg[1] or "levels/demo.lua")
 local catalog = assert(catalog_loader.load(index, read))
 assert(catalog_loader.loadRules(catalog, read))
-assert(catalog_loader.loadShowcase(read), catalog_loader.SHOWCASE .. ": not found")
+assert(catalog_loader.loadShowcase(read))
 
 local files = { index, catalog_loader.SHOWCASE }
 for _, pack in ipairs(catalog.packs) do

@@ -6,6 +6,7 @@
 local models = require "ui.models"
 local motion = require "view.motion"
 local memo = require "core.memo"
+local draw = require "ui.draw"
 
 local theme = require "view.theme"
 
@@ -17,66 +18,38 @@ local PRESS = 0.94
 local INK, ACCENT, TRACK = theme.vec(ui.ink), theme.vec(ui.accent), theme.vec(ui.track)
 local SOFT_INK = theme.vec(ui.soft_ink)
 local DANGER, WHITE, DIM, FADE = theme.vec(ui.danger), theme.vec(ui.white), theme.vec(ui.dim), theme.vec(ui.fade)
-local FONT_SIZE = { title = 64, body = 40 }
-local SLICE = vmath.vector4(30, 30, 30, 30)
 local EASE_RATE = 14
+local withAlpha, place, writeText, placeBar = draw.withAlpha, draw.place, draw.setText, draw.placeBar
 
-local function withAlpha(color, alpha)
-	local c = vmath.vector4(color)
-	c.w = c.w * alpha
-	return c
-end
-
+-- Nodes start disabled; drawing enables those a sheet uses.
 local function box(image, sliced)
 	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	gui.set_enabled(node, false)
 	if image then
 		gui.set_texture(node, "hud")
 		gui.play_flipbook(node, image)
 	end
 	if sliced then
-		gui.set_slice9(node, SLICE)
+		gui.set_slice9(node, draw.SLICE)
 	end
 	return node
 end
 
 local function text(font)
 	local node = gui.new_text_node(vmath.vector3(), "")
+	gui.set_enabled(node, false)
 	gui.set_font(node, font)
 	gui.set_pivot(node, gui.PIVOT_CENTER)
 	return node
 end
 
-local function place(node, x, y, w, h, color)
-	gui.set_screen_position(node, vmath.vector3(x, y, 0))
-	gui.set_size(node, vmath.vector3(w, h, 0))
-	gui.set_color(node, color)
-end
-
-local function writeText(node, font, value, x, y, size, color, pivot)
-	gui.set_text(node, value)
-	gui.set_pivot(node, pivot or gui.PIVOT_CENTER)
-	gui.set_screen_position(node, vmath.vector3(x, y, 0))
-	local s = size / FONT_SIZE[font]
-	gui.set_scale(node, vmath.vector3(s, s, 1))
-	gui.set_color(node, color)
-end
-
--- A bar with chamfered corners, cut in proportion to its height: the key image is sliced at
--- its full height and scaled down, so even thin bars keep whole corners.
-local KEY_SIZE = 96
-
+-- A bar with chamfered corners (draw.placeBar).
 local function bar()
 	return box("key", true)
 end
 
-local function placeBar(node, x, y, w, h, color)
-	local k = h / KEY_SIZE
-	place(node, x, y, math.max(w, h) / k, KEY_SIZE, color)
-	gui.set_scale(node, vmath.vector3(k, k, 1))
-end
-
+-- The most segments a choice, tabs or keys row can have: each item keeps nodes for this many.
 local MAX_SEGMENTS = 5
-
 
 local function createItem()
 	local item = {
@@ -204,6 +177,7 @@ local controls = { slider = true, toggle = true, choice = true, tabs = true, key
 local function drawItem(item, spec, a)
 	local control = controls[spec.kind] and spec.kind or nil
 	item.segment_count = spec.segments and #spec.segments or 0
+	assert(item.segment_count <= MAX_SEGMENTS, "panel: more segments than an item's nodes")
 	enableItem(item, true, control)
 	item.scale = motion.ease(item.scale, 1, 0.25, 1e-3)
 	item.moving = item.scale ~= 1
@@ -218,7 +192,7 @@ local function drawItem(item, spec, a)
 	if control == "tabs" then
 		return
 	elseif control then
-		writeText(item.label, "body", spec.label, spec.x - spec.w / 2 + h * 0.4, spec.y, h * 0.36, withAlpha(color, a), gui.PIVOT_W)
+		writeText(item.label, "body", spec.label, spec.x - spec.w / 2 + h * 0.4, spec.y, spec.label_size, withAlpha(color, a), gui.PIVOT_W)
 	else
 		writeText(item.label, "body", spec.label, spec.x, spec.y, h * 0.4, withAlpha(color, a))
 	end
@@ -264,7 +238,7 @@ local function drawFrame(self, layout, a, w, h)
 	if layout.text then
 		local t = layout.text
 		writeText(self.paragraph, "body", t.text, t.x, t.y, t.size, withAlpha(INK, a))
-		gui.set_size(self.paragraph, vmath.vector3(t.w * FONT_SIZE.body / t.size, 0, 0))
+		gui.set_size(self.paragraph, vmath.vector3(t.w * draw.FONT_SIZE.body / t.size, 0, 0))
 	end
 	gui.set_enabled(self.note, layout.note ~= nil)
 	if layout.note then
@@ -326,7 +300,7 @@ function update(self, dt)
 	local w, h = window.get_size()
 	local layout = models.layout("panel")
 	local fade = models.layout("fade") or 0
-	local k = 1 - math.exp(-EASE_RATE * dt)
+	local k = motion.blend(EASE_RATE, dt)
 	self.shown = (fade > 0.95 and not layout) and 0 or motion.ease(self.shown, layout and 1 or 0, k, 1e-3)
 	self.last = layout or self.last
 	local presses = models.takePresses("panel")

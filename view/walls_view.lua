@@ -19,13 +19,14 @@ local MARGIN = 0.3
 M.WALL_GAP = MARGIN
 M.FLOOR_GAP = 0.02
 local FADE_RATE = 6
--- Cells change at a constant speed (full change per second), so appearing mirrors disappearing.
+-- Cells change at a constant speed (CELL_SPEED full changes per second), so appearing mirrors
+-- disappearing.
 local CELL_SPEED = 7
 local PULSE_RATE = 2.2
 local SWITCH = 0.08
 
 local axes_of = { front = 3, side = 1, top = 2 }
-local gaps = { front = M.WALL_GAP, side = M.WALL_GAP, top = M.FLOOR_GAP }
+local gaps = { front = MARGIN, side = MARGIN, top = M.FLOOR_GAP }
 local margins = {
 	front = { MARGIN, MARGIN, M.FLOOR_GAP, MARGIN },
 	side = { MARGIN, MARGIN, M.FLOOR_GAP, MARGIN },
@@ -42,7 +43,6 @@ local function zeros(n)
 	end
 	return t
 end
-
 
 -- Texture slots follow the sampler order in panel.material: slot 0 is the static digit strip
 -- (panel.mesh) and `cells` is bound twice (sharp, soft). Channels holding numbers or ids snap
@@ -197,12 +197,10 @@ local function wantId(layer, i, light)
 	end
 end
 
--- Per texel: shape holds what neighbouring cells merge by (read once per neighbour): target,
--- judged coverage, focus (see focusGoals), in [0, 1], and the wanted-light id in 255ths;
--- cells: wrong (cast but not as wanted) and contact, in b and a; received and target: the
--- colour of the light received and wanted (see lightGoal); counts: the wanted count (count
--- walls) and the cubes on the ray (count and parity walls), in 255ths. `contact` is given for
--- the floor, `cubes` for walls that count.
+-- Each cell's goals, per layer (as materials/panel.fp reads them): shape { target, coverage,
+-- focus, wanted-light id }; cells { -, -, wrong, contact }; received and target, the light's
+-- colour (lightGoal); counts { wanted count, cubes on the ray }. `contact` is given for the
+-- floor, `cubes` for walls that count.
 local function cellGoals(wall, target, comparison, contact, cubes)
 	local layers, op = wall.layers, wall.operator
 	local wanted = target and target.layers[op]
@@ -282,7 +280,9 @@ function M.celebrate(walls)
 	end
 end
 
-local function stepSide(wall, eye, k)
+-- The side a wall should stand on, away from the camera at `eye`; the floor stays put, and
+-- near the switch point a wall keeps its side.
+local function aimSide(wall, eye)
 	if wall.axis ~= 2 then
 		local e = eye[AXIS_NAMES[wall.axis]]
 		if e > SWITCH then
@@ -291,10 +291,19 @@ local function stepSide(wall, eye, k)
 			wall.goal_side = 1
 		end
 	end
+end
+
+local function showSide(wall, side)
+	wall.side = side
+	go.set(wall.mesh, "vertices", wall.buffers[side])
+end
+
+-- A wall changing sides fades out, switches and fades back in.
+local function stepSide(wall, eye, k)
+	aimSide(wall, eye)
 	wall.opacity = motion.ease(wall.opacity, wall.goal_side == wall.side and 1 or 0, k)
 	if wall.goal_side ~= wall.side and wall.opacity < 0.02 then
-		wall.side = wall.goal_side
-		go.set(wall.mesh, "vertices", wall.buffers[wall.side])
+		showSide(wall, wall.goal_side)
 	end
 end
 
@@ -337,8 +346,11 @@ end
 -- Ends every fade, ease and pulse at once, as seen from `eye`, for a still picture.
 function M.finish(walls, eye)
 	for _, wall in pairs(walls.list) do
-		stepSide(wall, eye, 1)
-		stepSide(wall, eye, 1)
+		aimSide(wall, eye)
+		if wall.side ~= wall.goal_side then
+			showSide(wall, wall.goal_side)
+		end
+		wall.opacity = 1
 		stepCells(wall, 1)
 		wall.pulse, wall.glow = 0, wall.matched and 1 or 0
 		showFx(wall)

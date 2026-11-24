@@ -6,12 +6,14 @@
 --   { kind = "wheel", amount, start }
 --   { kind = "key", key, name, pressed, released }    key: the physical key; name: its action or nil
 --   { kind = "hover", x, y }
+--   { kind = "blur" }    the window lost focus, so held keys and buttons will not report release
 -- Gestures:
 --   tap { button, x, y }
 --   drag_start { button, x, y, touch }, drag_move { button, x, y, dx, dy, multi }, drag_end { button, x, y }
 --   two_finger { scale, twist }        relative scale and twist angle (radians) since the last event
 --   second_move { dx, dy }, second_up  another finger moving while the first stays down; lifting it
 --   wheel { amount, start } (start: the first step of a scroll gesture), key { key, name, pressed, released }, hover { x, y } (pointer moved, no button)
+--   blur (as the raw event)
 --
 -- On touch devices the first finger also arrives as the primary pointer; `multi` marks pointer
 -- moves made while two or more fingers are down, so receivers can treat them as part of a pinch.
@@ -135,6 +137,8 @@ function M.feed(rec, ev)
 		out[1] = { kind = "key", key = ev.key, name = ev.name, pressed = ev.pressed, released = ev.released }
 	elseif ev.kind == "hover" then
 		out[1] = { kind = "hover", x = ev.x, y = ev.y }
+	elseif ev.kind == "blur" then
+		out[1] = ev
 	end
 	return out
 end

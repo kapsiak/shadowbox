@@ -1,7 +1,8 @@
 -- Player preferences. Pure Lua: plain values with defaults, sanitized when loaded.
--- Sliders have ranges, choices have a fixed list of values, `bindings` is a table of the key
--- bindings a player changed (input/controls cleans it), everything else is a toggle.
+-- Sliders have ranges, choices have a fixed list of values, `bindings` holds the key bindings
+-- a player changed (cleaned by input/controls), everything else is a toggle.
 local hot = require "core.hot"
+local controls = require "input.controls"
 local M = {}
 
 M.defaults = {
@@ -23,6 +24,9 @@ M.defaults = {
 }
 
 local ranges = { sound = { 0, 1 }, music = { 0, 1 }, sensitivity = { 0.4, 2 } }
+local cleaners = { bindings = controls.changed }
+-- The highest pixel density each quality renders at; high keeps the display's own.
+local DENSITY_CAP = { low = 1, balanced = 2 }
 
 M.choices = {
 	colors = {
@@ -44,6 +48,9 @@ local function isChoice(key, value)
 end
 
 local function sanitize(key, value)
+	if cleaners[key] then
+		return cleaners[key](value)
+	end
 	local default = M.defaults[key]
 	if type(value) ~= type(default) then
 		return default
@@ -80,11 +87,10 @@ function M.range(key)
 	return ranges[key]
 end
 
--- How much of the screen resolution the 3D scene renders at: a quality choice caps the pixel
--- density (render pixels per logical pixel; high keeps the display's own). display_scale: the
--- display's density (window.get_display_scale).
+-- How much of the screen resolution the 3D scene renders at, for a quality choice and the
+-- display's pixel density (window.get_display_scale).
 function M.renderScale(quality, display_scale)
-	local cap = ({ low = 1, balanced = 2 })[quality]
+	local cap = DENSITY_CAP[quality]
 	return cap and math.min(1, cap / display_scale) or 1
 end
 

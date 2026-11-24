@@ -9,6 +9,7 @@ local history = require "core.history"
 local orient = require "core.orient"
 local grid = require "core.grid"
 local raycast = require "core.raycast"
+local shape = require "core.shape"
 
 local M = {}
 
@@ -76,11 +77,6 @@ function M.isSolved(s)
 	return rules.evaluate(s.level, M.current(s)).solved
 end
 
-local function samePose(a, b)
-	return a and b and a.orient == b.orient
-		and a.cell[1] == b.cell[1] and a.cell[2] == b.cell[2] and a.cell[3] == b.cell[3]
-end
-
 local function commit(s, command)
 	local outcome, reason = rules.check(s.level, M.current(s), command)
 	if not outcome then
@@ -99,14 +95,6 @@ function M.dominantAxis(v)
 		end
 	end
 	return axis, v[axis] < 0 and -1 or 1
-end
-
-local function extent(cells, axis)
-	local lo, hi = math.huge, -math.huge
-	for _, c in ipairs(cells) do
-		lo, hi = math.min(lo, c[axis]), math.max(hi, c[axis])
-	end
-	return lo, hi
 end
 
 -- Starts dragging `piece`. hit_cell is the board cell grabbed (nil when taken from the tray).
@@ -131,10 +119,9 @@ function M.grab(s, piece, hit_cell)
 	s.selected = piece
 end
 
-local function check(s, d, cell)
-	local pose = { cell = cell, orient = d.orient }
-	local outcome, reason = rules.check(s.level, M.current(s), { kind = "place", piece = d.piece, pose = pose })
-	return { pose = pose, ok = outcome ~= nil, reason = reason }
+-- The cells the other pieces occupy, for checking where `piece` may go.
+local function othersOf(s, piece)
+	return grid.occupancy(s.level, M.current(s).poses, piece)
 end
 
 -- How far a preview may move sideways from where it is aimed to become legal.
@@ -143,6 +130,7 @@ local SIDEWAYS = 2
 -- The legal pose nearest `base`: each step out along the surface normal or sideways costs
 -- one, and at equal cost stepping out wins. Nil if none is near.
 local function nearestLegal(s, d, base, normal)
+	local occupied = othersOf(s, d.piece)
 	local a = M.dominantAxis(normal)
 	local u, w = a % 3 + 1, (a + 1) % 3 + 1
 	local reach = math.max(s.level.size[1], s.level.size[2], s.level.size[3])
@@ -154,9 +142,9 @@ local function nearestLegal(s, d, base, normal)
 				for _, dw in ipairs(rest == 0 and { 0 } or { -rest, rest }) do
 					local cell = { base[1] + normal[1] * k, base[2] + normal[2] * k, base[3] + normal[3] * k }
 					cell[u], cell[w] = cell[u] + du, cell[w] + dw
-					local candidate = check(s, d, cell)
-					if candidate.ok then
-						return candidate
+					local pose = { cell = cell, orient = d.orient }
+					if rules.checkPlace(s.level, occupied, d.piece, pose) then
+						return { pose = pose, ok = true }
 					end
 				end
 			end
@@ -172,8 +160,9 @@ local function aimed(s, d)
 		cell[b] = (surface and surface.cell[b] or d.pivot[b]) - d.offset[b] + d.shift[b]
 	end
 	if surface then
-		local lo, hi = extent(s.level.pieces[d.piece].shape.forms[d.orient], d.axis)
-		cell[d.axis] = surface.cell[d.axis] - (surface.normal[d.axis] > 0 and lo or hi) + d.shift[d.axis]
+		local lo, hi = shape.bounds(s.level.pieces[d.piece].shape.forms[d.orient])
+		local a = d.axis
+		cell[a] = surface.cell[a] - (surface.normal[a] > 0 and lo[a] or hi[a]) + d.shift[a]
 	end
 	return cell
 end
@@ -222,7 +211,7 @@ function M.drop(s, into_tray)
 		s.held[d.piece] = d.orient
 		return d.from ~= nil and commit(s, { kind = "remove", piece = d.piece })
 	end
-	if d.candidate and d.candidate.ok and not samePose(d.candidate.pose, d.from) then
+	if d.candidate and d.candidate.ok and not state.samePose(d.candidate.pose, d.from) then
 		return commit(s, { kind = "place", piece = d.piece, pose = d.candidate.pose })
 	end
 	return false
@@ -249,11 +238,11 @@ function M.turn(s, axis, dir)
 		s.held[s.selected] = orient.turn(s.held[s.selected] or orient.identity, axis, dir)
 		return true
 	end
-	local n = orient.turn(pose.orient, axis, dir)
+	local n, occupied = orient.turn(pose.orient, axis, dir), othersOf(s, s.selected)
 	for _, k in ipairs(KICKS) do
-		local cell = { pose.cell[1] + k[1], pose.cell[2] + k[2], pose.cell[3] + k[3] }
-		if commit(s, { kind = "place", piece = s.selected, pose = { cell = cell, orient = n } }) then
-			return true
+		local turned = { cell = { pose.cell[1] + k[1], pose.cell[2] + k[2], pose.cell[3] + k[3] }, orient = n }
+		if rules.checkPlace(s.level, occupied, s.selected, turned) then
+			return commit(s, { kind = "place", piece = s.selected, pose = turned })
 		end
 	end
 	return false

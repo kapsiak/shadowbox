@@ -60,8 +60,9 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
   `theme` (**all colours and lighting: restyle here**), `palette`.
 - `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout` (one chapter per page,
   computed once per screen size and chapter; scroll and the sideways slide are offsets on the GUI
-  roots, nodes pooled by slot), `sheets` content), `models`
-  (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
+  roots, nodes pooled by slot), `sheets` content, `measure` (text width estimates)), `models`
+  (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`) and their shared
+  `draw` helpers. Layouts watch `info.geometry` (bumped when size, scale or safe area change).
 - `render/game.render_script`: thumbs (only on frames that publish shots, into
   `render/thumbs.render_target`) → background → `gui_back` (select screen) → board (panels, cubes,
   glass blended over them) → tray → optional scaled-target blit → GUI. Each pass sets the GPU
@@ -185,6 +186,13 @@ card scenes). Quality caps pixel density (Low 1x, Medium 2x, the default, High n
 their old value. Performance pass, measured on desktop: an idle level went from ~0.75 to ~0.3 ms of
 Lua and ~600 to ~0 KB/s of garbage; the level select from 54 to 60 fps (wall shader from ~30 to 9
 reads per pixel, thumbnails static images, ~0.16 ms of Lua). The thumbnail sway is gone.
+Self-review (whole runtime codebase): bindings cleaned once in `game/settings`; keys and HUD
+buttons share one action table (`input/interpret`), held actions (peek) release on focus loss
+(a "blur" raw event); piece colours checked against every palette on load; layouts watch
+`info.geometry`; shared `ui/draw` and `ui/measure`, `shape.bounds`, `state.samePose`,
+`rules.checkPlace` (occupancy built once per drag aim and turn); `view/audio` idle-free; the HUD
+tooltip and panel nodes start disabled (a stray white key showed at the origin). Specs and
+luacheck clean; the user ran the game and it idles at ~3% CPU.
 
 Next, in order:
 0. On the phone: the performance pass (warmth, Medium quality, the level select), peek, demo build.

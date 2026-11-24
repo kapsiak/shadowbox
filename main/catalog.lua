@@ -2,11 +2,13 @@
 -- levels/demo.lua in demo builds) lists the packs in order and optionally caps each pack's
 -- levels (`limit = { [pack] = n }`); each pack's pack.lua lists its levels. levels/rules holds
 -- the rule cards. Every loader takes `read` (resource path -> text or nil), sys.load_resource
--- by default, so tools/demo_resources.lua can load from disk.
+-- by default. Every piece colour must be in every palette (view/theme), so none falls back to
+-- a plain grey.
 local hot = require "core.hot"
 local level = require "core.level"
 local source_data = require "core.source"
 local lessons = require "game.lessons"
+local theme = require "view.theme"
 
 local M = {}
 
@@ -28,6 +30,29 @@ local function evalResource(read, path)
 	return value
 end
 
+local function painted(lvl, path)
+	for _, piece in ipairs(lvl.pieces) do
+		for name, palette in pairs(theme.palettes) do
+			if piece.color and not palette[piece.color] then
+				return nil, ("%s: piece %s: colour '%s' is not in the %s palette"):format(path, piece.key, piece.color, name)
+			end
+		end
+	end
+	return lvl
+end
+
+local function loadLevel(read, path)
+	local source = read(path)
+	if not source then
+		return nil, path .. ": not found"
+	end
+	local lvl, err = level.load(source, path)
+	if not lvl then
+		return nil, err
+	end
+	return painted(lvl, path)
+end
+
 local function loadPack(read, id, limit)
 	local manifest_path = ("/levels/%s/pack.lua"):format(id)
 	local manifest, err = evalResource(read, manifest_path)
@@ -39,11 +64,7 @@ local function loadPack(read, id, limit)
 	for i = 1, math.min(#manifest.levels, limit or math.huge) do
 		local name = manifest.levels[i]
 		local path = ("/levels/%s/%s.lua"):format(id, name)
-		local source = read(path)
-		if not source then
-			return nil, path .. ": not found"
-		end
-		local lvl, level_err = level.load(source, path)
+		local lvl, level_err = loadLevel(read, path)
 		if not lvl then
 			return nil, level_err
 		end
@@ -90,6 +111,9 @@ function M.loadRules(catalog, read)
 			return nil, err
 		end
 		local lvl, level_err = level.parse(def, path)
+		if lvl then
+			lvl, level_err = painted(lvl, path)
+		end
 		if not lvl then
 			return nil, level_err
 		end
@@ -100,10 +124,9 @@ end
 
 M.SHOWCASE = "/levels/showcase.lua"
 
--- The level shown as a sculpture on the main menu.
+-- The level shown as a sculpture on the main menu, or nil and the error.
 function M.loadShowcase(read)
-	local source = (read or defaultRead)(M.SHOWCASE)
-	return source and level.load(source, M.SHOWCASE)
+	return loadLevel(read or defaultRead, M.SHOWCASE)
 end
 
 -- Returns { packs = { { id, title, intro, levels, keys, paths } } }, or nil and the first error.

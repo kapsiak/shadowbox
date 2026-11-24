@@ -88,9 +88,8 @@ end
 function M.layout(screen, info)
 	screen.info = info
 	screen.chapter = screen.chapter or select_layout.chapterOf(screen.catalog, screen.saved, screen.last, info.settings.open_all)
-	local safe = info.safe
-	if memo.changed(screen.frame, info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
-		info.settings.reduced_motion, screen.chapter) then
+	local prefs = info.settings
+	if memo.changed(screen.frame, info.geometry, prefs.reduced_motion, prefs.open_all, screen.chapter) then
 		local turned = screen.view_chapter ~= screen.chapter
 		screen.view_chapter = screen.chapter
 		screen.view = select_layout.compute(info, screen.catalog, screen.saved, screen.chapter)
@@ -260,15 +259,13 @@ local function fling(screen, dt)
 	end
 end
 
-
 function M.present(screen, dt, info)
 	screen.clock = screen.clock + dt
 	M.layout(screen, info)
 	fling(screen, dt)
 	screen.scroll = motion.ease(screen.scroll, screen.goal_scroll, motion.blend(SCROLL_RATE, dt), 0.01)
 	if not screen.swiping then
-		screen.slide = screen.slide * math.exp(-SLIDE_RATE * dt)
-		screen.slide = math.abs(screen.slide) < 0.5 and 0 or screen.slide
+		screen.slide = motion.ease(screen.slide, 0, motion.blend(SLIDE_RATE, dt), 0.5)
 	end
 	thumbs.present(screen.thumbs, screen.thumb_specs, info.settings)
 	screen.model.thumbs = screen.thumbs.images

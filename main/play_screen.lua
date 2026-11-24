@@ -43,7 +43,7 @@ local function tipFor(id, bindings)
 	if not action then
 		return nil
 	end
-	local keys = controls.keysOf(controls.changed(bindings), action.id)
+	local keys = controls.keysOf(bindings, action.id)
 	return { id = id, text = keys[1] and action.label .. "   " .. controls.keyLabel(keys[1]) or action.label }
 end
 
@@ -94,12 +94,12 @@ end
 
 -- The HUD is laid out again only when something it depends on changes.
 function M.layout(screen, info)
-	local s, safe, prefs = screen.session, info.safe, info.settings
+	local s, prefs = screen.session, info.settings
 	screen.info = info
 	local piece_controls, can_undo, can_redo = s.selected ~= nil and not screen.solved, play.canUndo(s), play.canRedo(s)
 	local tip = #screen.sheets == 0 and shownTip(screen.tip) or nil
-	if memo.changed(screen.hud_inputs, info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
-		prefs.left_handed, prefs.bindings, piece_controls, can_undo, can_redo, screen.solved, screen.peek, tip) then
+	if memo.changed(screen.hud_inputs, info.geometry, prefs.left_handed, prefs.bindings, piece_controls, can_undo,
+		can_redo, screen.solved, screen.peek, tip) then
 		screen.hud = hud_layout.compute(info, {
 			piece_controls = piece_controls, can_undo = can_undo, can_redo = can_redo,
 			title = s.level.name, subtitle = screen.subtitle, solved = screen.solved,

@@ -55,12 +55,10 @@ vec4 shapeAt(vec2 c)
     return inGrid(c) ? texture(shape, (c + 0.5) / dims.zw) : vec4(0.0);
 }
 
-// Distance from a point to the edge of a region of cells, counting the nearer side along x and
-// along y and the corner between them by how far that neighbour lies outside the region (0 to
-// 1), so neighbouring cells merge seamlessly and smoothly as they come and go. `a` is the
-// point's distance from the cell centre on each axis. The far sides and corners lie at least
-// half a cell away, beyond every threshold this is compared with, so they are not read. Capped
-// at 1.
+// Distance (capped at 1) from a point `a` (its distance from the cell centre on each axis) to
+// the edge of a region of cells: the near side along x, along y and the corner between, each
+// weighted by how far that neighbour lies outside (0 to 1), so cells merge smoothly as they
+// come and go. The far neighbours lie beyond every threshold this is compared with.
 float edgeDistance(vec2 a, vec3 out_xyc)
 {
     float d = 1.0;

@@ -47,22 +47,13 @@ local builders = {
 	confirm_restart = function() return content.confirmRestart() end,
 }
 
--- Lays out the top sheet (or nil when none is open) and remembers it for hit testing.
-local function count(t)
-	local n = 0
-	for _ in pairs(t) do
-		n = n + 1
-	end
-	return n
-end
-
--- Laid out again only when the sheet or something its content reads changes.
+-- Lays out the top sheet (or nil when none is open) and remembers it for hit testing; laid out
+-- again only when the sheet or something its content reads changes.
 function M.layout(screen, info)
-	local name, safe, cards = M.top(screen), info.safe, screen.cards
+	local name, cards = M.top(screen), screen.cards
 	screen.sheet_inputs = screen.sheet_inputs or {}
-	if memo.changed(screen.sheet_inputs, name, info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
-		info.settings, info.can_continue, count(info.seen), cards and cards[1], cards and #cards,
-		screen.keys_page, screen.rebinding, screen.settings_tab) then
+	if memo.changed(screen.sheet_inputs, name, info.geometry, info.settings, info.can_continue, info.seen,
+		cards and cards[1], cards and #cards, screen.keys_page, screen.rebinding, screen.settings_tab) then
 		screen.sheet_layout = name and panel_layout.compute(info, builders[name](info, screen)) or nil
 	end
 	return screen.sheet_layout
@@ -118,7 +109,7 @@ function M.key(screen, g, intents, bindings)
 	if not screen.rebinding or g.kind ~= "key" or not g.pressed then
 		return false
 	end
-	local changed = g.key ~= "escape" and controls.rebind(controls.changed(bindings), screen.rebinding, g.key)
+	local changed = g.key ~= "escape" and controls.rebind(bindings, screen.rebinding, g.key)
 	if changed then
 		intents[#intents + 1] = { kind = "setting", key = "bindings", value = changed }
 	end

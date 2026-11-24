@@ -90,18 +90,24 @@ end
 local can_fullscreen = defos ~= nil and canFullscreen()
 
 -- The screen as the active screen sees it: one table, updated in place each frame. The safe
--- area and display scale are read again only when the window size changes.
+-- area and display scale are read again when the window size changes or it reports a resize.
+-- `geometry` counts changes to w, h, scale and safe, so a layout can watch that one value.
 local function screenInfo(self)
 	local info = self.info
 	local w, h = window.get_size()
 	w, h = math.max(w, 1), math.max(h, 1)
-	if w ~= info.w or h ~= info.h then
+	if w ~= info.w or h ~= info.h or self.resized then
 		local area = window.get_safe_area()
 		local safe = info.safe
 		info.w, info.h, info.display_scale = w, h, window.get_display_scale()
 		safe.left, safe.right, safe.top, safe.bottom = area.inset_left, area.inset_right, area.inset_top, area.inset_bottom
+		info.geometry = info.geometry + 1
+		self.resized = false
 	end
-	info.scale = info.display_scale * self.settings.ui_scale
+	local scale = info.display_scale * self.settings.ui_scale
+	if scale ~= info.scale then
+		info.scale, info.geometry = scale, info.geometry + 1
+	end
 	info.settings = self.settings
 	info.can_continue = self.last ~= nil
 	info.seen = self.saved.seen
@@ -163,13 +169,17 @@ local function changeScreen(self, request)
 	end
 end
 
+local function applyRenderScale(self)
+	frame.scale = settings.renderScale(self.settings.quality, window.get_display_scale())
+end
+
 -- Applies the settings that act on the engine, the window and input rather than on a screen.
 local function applyDisplay(self)
 	local prefs = self.settings
-	self.keymap = controls.keymap(controls.changed(prefs.bindings))
+	self.keymap = controls.keymap(prefs.bindings)
 	sys.set_vsync_swap_interval(prefs.frame_rate == 0 and 1 or 0)
 	sys.set_update_frequency(prefs.frame_rate)
-	frame.scale = settings.renderScale(prefs.quality, window.get_display_scale())
+	applyRenderScale(self)
 	if can_fullscreen and defos.is_fullscreen() ~= prefs.fullscreen then
 		defos.set_fullscreen(prefs.fullscreen)
 	end
@@ -276,7 +286,7 @@ function init(self)
 	self.thumb_atlas = thumbs.createAtlas()
 	go.set("/select#select", "textures", self.thumb_atlas, { key = "thumbs" })
 	self.info = {
-		w = 0, h = 0, display_scale = 1, safe = {},
+		w = 0, h = 0, display_scale = 1, scale = 0, geometry = 0, safe = {},
 		can_fullscreen = can_fullscreen, has_keyboard = not mobile,
 		title = sys.get_config_string("project.title", ""),
 		version = sys.get_config_string("project.version", ""),
@@ -290,15 +300,17 @@ function init(self)
 	self.last = data.last
 	self.boards = data.boards
 	self.sessions = {}
-	window.set_listener(function(self, event)
+	window.set_listener(function(_, event)
 		if event == window.WINDOW_EVENT_FOCUS_LOST or event == window.WINDOW_EVENT_ICONIFIED then
+			self.raw_input[#self.raw_input + 1] = { kind = "blur" }
 			flush(self)
 		elseif event == window.WINDOW_EVENT_RESIZED then
+			self.resized = true
 			if can_fullscreen and defos.is_fullscreen() ~= self.settings.fullscreen then
 				self.settings = settings.with(self.settings, "fullscreen", defos.is_fullscreen())
 				markDirty(self)
 			end
-			frame.scale = settings.renderScale(self.settings.quality, window.get_display_scale())
+			applyRenderScale(self)
 		end
 	end)
 	if html5 then

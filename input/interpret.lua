@@ -14,54 +14,60 @@
 --                                 `swipe_step` pixels: sideways about vertical, up or down tips
 --   nudge { along, delta }        along = "vertical" | "drag" (the drag plane's axis)
 --   peek { on }                   while held, pieces fade so the walls show
---   undo, redo, remove, menu, next
+--   undo, redo, remove, menu, next, rules
+-- Intents are shared and must not be changed by their receivers.
 local hot = require "core.hot"
+local controls = require "input.controls"
 local M = {}
 
 local ORBIT_PER_SCREEN = math.pi
 local WHEEL_STEP = 0.9
 
-local key_views = { view_front = "front", view_side = "side", view_top = "top", view_iso = "iso" }
-local key_orbits = {
-	orbit_left = { -1, 0 },
-	orbit_right = { 1, 0 },
-	orbit_up = { 0, -1 },
-	orbit_down = { 0, 1 },
-}
-local key_zooms = { zoom_in = WHEEL_STEP, zoom_out = 1 / WHEEL_STEP }
-local key_turns = {
-	turn_left = { "vertical", -1 },
-	turn_right = { "vertical", 1 },
-	tip_away = { "right", -1 },
-	tip_toward = { "right", 1 },
-	roll_left = { "toward", 1 },
-	roll_right = { "toward", -1 },
-}
-local key_nudges = { lift = 1, lower = -1 }
-local key_commands = { undo = "undo", redo = "redo", remove = "remove", menu = "menu", confirm = "next", rules = "rules" }
-
--- On-screen buttons (ui/hud_layout ids) and the intents they stand for.
-local buttons = {
-	undo = { kind = "undo" },
-	redo = { kind = "redo" },
-	menu = { kind = "menu" },
-	rules = { kind = "rules" },
+-- What each action (input/controls) stands for, whether from its keys or its HUD button. A
+-- `held` action acts while held: { kind, on = true } on press and on = false on release.
+local action_intents = {
+	turn_left = { kind = "turn", about = "vertical", dir = -1 },
+	turn_right = { kind = "turn", about = "vertical", dir = 1 },
+	tip_away = { kind = "turn", about = "right", dir = -1 },
+	tip_toward = { kind = "turn", about = "right", dir = 1 },
+	roll_left = { kind = "turn", about = "toward", dir = 1 },
+	roll_right = { kind = "turn", about = "toward", dir = -1 },
+	lift = { kind = "nudge", along = "vertical", delta = 1 },
+	lower = { kind = "nudge", along = "vertical", delta = -1 },
+	remove = { kind = "remove" },
 	view_front = { kind = "view", name = "front" },
 	view_side = { kind = "view", name = "side" },
 	view_top = { kind = "view", name = "top" },
 	view_iso = { kind = "view", name = "iso" },
-	turn_left = { kind = "turn", about = "vertical", dir = -1 },
-	turn_right = { kind = "turn", about = "vertical", dir = 1 },
-	tip_away = { kind = "turn", about = "right", dir = -1 },
-	roll_right = { kind = "turn", about = "toward", dir = -1 },
-	lift = { kind = "nudge", along = "vertical", delta = 1 },
-	lower = { kind = "nudge", along = "vertical", delta = -1 },
-	stow = { kind = "remove" },
-	next = { kind = "next" },
-	peek = { kind = "peek", on = true },
+	zoom_in = { kind = "zoom", factor = WHEEL_STEP },
+	zoom_out = { kind = "zoom", factor = 1 / WHEEL_STEP },
+	peek = { kind = "peek", held = true },
+	undo = { kind = "undo" },
+	redo = { kind = "redo" },
+	rules = { kind = "rules" },
+	confirm = { kind = "next" },
+	menu = { kind = "menu" },
 }
--- Buttons held for their effect, and the intents their release stands for.
-local releases = { peek = { kind = "peek", on = false } }
+-- Orbit keys turn the camera at a rate for as long as they are held, repeats included.
+local key_orbits = {
+	orbit_left = { kind = "orbit_rate", yaw = -1, pitch = 0 },
+	orbit_right = { kind = "orbit_rate", yaw = 1, pitch = 0 },
+	orbit_up = { kind = "orbit_rate", yaw = 0, pitch = -1 },
+	orbit_down = { kind = "orbit_rate", yaw = 0, pitch = 1 },
+}
+local HOLD = { press = true, release = false }
+
+-- Emits an action's intent for a press or release ("press" | "release"; other phases do nothing).
+local function act(id, phase, out)
+	local intent = action_intents[id]
+	if not intent or HOLD[phase] == nil then
+		return
+	elseif intent.held then
+		out[#out + 1] = { kind = intent.kind, on = HOLD[phase] }
+	elseif phase == "press" then
+		out[#out + 1] = intent
+	end
+end
 
 -- screen_height normalizes drag distances so sensitivity is resolution independent.
 -- sensitivity scales camera drags; invert flips their direction. A touch drag aims `lift`
@@ -71,22 +77,21 @@ function M.new(screen_height)
 end
 
 local function onKey(g, out)
-	local name = g.name
-	if name == "peek" and (g.pressed or g.released) then
-		out[#out + 1] = { kind = "peek", on = g.pressed }
-	elseif g.pressed and key_views[name] then
-		out[#out + 1] = { kind = "view", name = key_views[name] }
-	elseif not g.released and key_orbits[name] then
-		local o = key_orbits[name]
-		out[#out + 1] = { kind = "orbit_rate", yaw = o[1], pitch = o[2] }
-	elseif g.pressed and key_zooms[name] then
-		out[#out + 1] = { kind = "zoom", factor = key_zooms[name] }
-	elseif g.pressed and key_turns[name] then
-		out[#out + 1] = { kind = "turn", about = key_turns[name][1], dir = key_turns[name][2] }
-	elseif g.pressed and key_nudges[name] then
-		out[#out + 1] = { kind = "nudge", along = "vertical", delta = key_nudges[name] }
-	elseif g.pressed and key_commands[name] then
-		out[#out + 1] = { kind = key_commands[name] }
+	if key_orbits[g.name] then
+		if not g.released then
+			out[#out + 1] = key_orbits[g.name]
+		end
+	else
+		act(g.name, g.pressed and "press" or g.released and "release", out)
+	end
+end
+
+-- The window lost focus: releases never arrive, so every held action lets go.
+local function onBlur(out)
+	for _, intent in pairs(action_intents) do
+		if intent.held then
+			out[#out + 1] = { kind = intent.kind, on = false }
+		end
 	end
 end
 
@@ -101,15 +106,11 @@ local function onDragStart(state, g, pick, out)
 	end
 end
 
--- phase: "press" or "release" (router control events).
+-- A HUD button (ui/hud_layout ids) pressed or released; phase as in router control events.
 function M.button(id, phase, out)
-	local intent = (phase == "press" and buttons or phase == "release" and releases or {})[id]
-	if intent then
-		local copy = {}
-		for k, v in pairs(intent) do
-			copy[k] = v
-		end
-		out[#out + 1] = copy
+	local action = controls.forButton(id)
+	if action then
+		act(action.id, phase, out)
 	end
 end
 
@@ -184,6 +185,8 @@ function M.gesture(state, g, pick, out)
 		out[#out + 1] = { kind = "zoom", factor = WHEEL_STEP ^ g.amount }
 	elseif g.kind == "key" then
 		onKey(g, out)
+	elseif g.kind == "blur" then
+		onBlur(out)
 	elseif g.kind == "hover" and not state.drag then
 		local hit = pick(g.x, g.y)
 		out[#out + 1] = { kind = "hover", piece = hit and hit.piece }

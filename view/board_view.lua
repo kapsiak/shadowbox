@@ -4,6 +4,8 @@
 -- view/board_pool), it replaces its piece objects and keeps the walls. Never touches game state.
 local hot = require "core.hot"
 local orient = require "core.orient"
+local state = require "core.state"
+local memo = require "core.memo"
 local palette = require "view.palette"
 local motion = require "view.motion"
 local walls_view = require "view.walls_view"
@@ -35,7 +37,7 @@ end
 -- An empty board under `parent`, a game object whose transform places it in the world.
 -- factories: { piece, glass_piece, panel } urls.
 function M.create(factories, parent)
-	return { factories = factories, parent = parent, pieces = {}, time = 0, shown = {}, walls = walls_view.create(factories.panel, parent) }
+	return { factories = factories, parent = parent, pieces = {}, time = 0, presented = {}, walls = walls_view.create(factories.panel, parent) }
 end
 
 local function clearPieces(view)
@@ -48,7 +50,7 @@ end
 -- Shows `level` with no pieces placed; buffers: its piece meshes by piece id.
 function M.bind(view, level, buffers)
 	clearPieces(view)
-	view.level, view.time, view.look, view.shown = level, 0, nil, {}
+	view.level, view.time, view.look, view.presented = level, 0, nil, {}
 	for _, piece in ipairs(level.pieces) do
 		local object = factory.create(palette.isGlass(piece) and view.factories.glass_piece or view.factories.piece)
 		local id = msg.url(nil, object, nil)
@@ -72,15 +74,10 @@ function M.hide(view)
 	walls_view.hide(view.walls)
 end
 
-local function samePose(a, b)
-	return a == b or (a and b and a.orient == b.orient
-		and a.cell[1] == b.cell[1] and a.cell[2] == b.cell[2] and a.cell[3] == b.cell[3])
-end
-
 -- A piece's goal and effects change only when its pose, lift or highlights do; any change
 -- wakes a resting piece.
 local function setGoal(p, pose, lifted, selected, invalid, hovered)
-	if not samePose(p.pose, pose) then
+	if not state.samePose(p.pose, pose) then
 		p.pose = pose
 		p.goal = pose and { position = cellCenter(pose.cell), rotation = M.poseRotation(pose.orient) }
 		p.rest = nil
@@ -95,11 +92,9 @@ end
 -- display: { poses, invalid, dragging, evaluation } from game/play (a new table whenever it
 -- changes); selected, hovered: piece ids or nil. Does nothing when none of them changed.
 function M.present(view, display, selected, hovered)
-	local shown = view.shown
-	if shown.display == display and shown.selected == selected and shown.hovered == hovered and shown.colors == view.colors then
+	if not memo.changed(view.presented, display, selected, hovered, view.colors) then
 		return
 	end
-	shown.display, shown.selected, shown.hovered, shown.colors = display, selected, hovered, view.colors
 	for id, p in pairs(view.pieces) do
 		setGoal(p, display.poses[id], id == display.dragging,
 			id == selected and 1 or 0, id == display.invalid and 1 or 0, id == hovered and 1 or 0)

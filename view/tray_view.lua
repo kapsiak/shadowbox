@@ -4,6 +4,9 @@
 -- tray looks as it will on the board. Layout is in screen pixels, so picking is a rectangle test.
 local hot = require "core.hot"
 local orient = require "core.orient"
+local shape = require "core.shape"
+local memo = require "core.memo"
+local motion = require "view.motion"
 local piece_look = require "view.piece_look"
 local palette = require "view.palette"
 local cameras = require "view.cameras"
@@ -17,13 +20,9 @@ local CAMERA_FOV = 0.5
 local SLOT_FILL = 0.85
 local EASE_RATE = 14
 
+-- The centre of the cells' bounding box and its diagonal.
 local function boxOf(cells)
-	local lo, hi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
-	for _, c in ipairs(cells) do
-		for a = 1, 3 do
-			lo[a], hi[a] = math.min(lo[a], c[a]), math.max(hi[a], c[a])
-		end
-	end
+	local lo, hi = shape.bounds(cells)
 	local center = vmath.vector3((lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2, (lo[3] + hi[3]) / 2)
 	local diagonal = vmath.vector3(hi[1] - lo[1] + 1, hi[2] - lo[2] + 1, hi[3] - lo[3] + 1)
 	return center, vmath.length(diagonal)
@@ -32,7 +31,7 @@ end
 -- The tray scene lives far from the board, seen by its own camera ("tray" in view/cameras).
 -- factories: { tray_piece, glass_tray_piece } urls.
 function M.create(level, factories, buffers)
-	local view = { level = level, pieces = {}, slots = {}, height = 0, extent = 1, count = #level.pieces }
+	local view = { level = level, pieces = {}, slots = {}, height = 0, extent = 1, count = #level.pieces, inputs = {}, lens = {} }
 	for _, piece in ipairs(level.pieces) do
 		local object = factory.create(palette.isGlass(piece) and factories.glass_tray_piece or factories.tray_piece)
 		local id = msg.url(nil, object, nil)
@@ -48,29 +47,28 @@ function M.create(level, factories, buffers)
 	return view
 end
 
+local function heldChanged(view, held)
+	for id, piece_view in pairs(view.pieces) do
+		if (held[id] or orient.identity) ~= piece_view.orient then
+			return true
+		end
+	end
+	return false
+end
+
 -- Lays out unplaced pieces (those without a displayed pose) for a w x h screen whose bottom
 -- `inset` fraction is the tray; rotation is the board camera's. A piece being dragged out of
 -- the tray, not yet over the board, follows `pointer` ({ x, y } or nil). ui.held: the
--- orientations of turned tray pieces (game/play), shown as the pieces will be placed.
--- Changes to the tray's inputs since the last present: the display (a new table whenever it
--- changes), screen, camera, highlights, pointer and held orientations.
-local function changed(view, display, ui, w, h, rotation)
-	local c = display ~= view.display or w ~= view.screen_width or h ~= view.screen_height or rotation ~= view.rotation
-		or ui.selected ~= view.selected or ui.hovered ~= view.hovered or ui.pointer ~= view.pointer
-	for id, piece_view in pairs(view.pieces) do
-		c = c or (ui.held[id] or orient.identity) ~= piece_view.orient
-	end
-	return c
-end
-
+-- orientations of turned tray pieces (game/play), shown as the pieces will be placed. Does
+-- nothing unless one of these changed (display is a new table whenever it changes).
 function M.present(view, display, ui, w, h, inset, rotation)
-	if not changed(view, display, ui, w, h, rotation) then
+	if not (memo.changed(view.inputs, display, w, h, rotation, ui.selected, ui.hovered, ui.pointer)
+		or heldChanged(view, ui.held)) then
 		return
 	end
-	if rotation ~= view.rotation or w ~= view.screen_width or h ~= view.screen_height then
+	if memo.changed(view.lens, w, h, rotation) then
 		cameras.set("tray", CAMERA_POSITION, rotation, CAMERA_FOV, w / h, 0.1, 50)
 	end
-	view.display, view.selected, view.hovered, view.pointer = display, ui.selected, ui.hovered, ui.pointer
 	view.rotation = rotation
 	view.screen_width = w
 	view.screen_height = h
@@ -145,7 +143,7 @@ function M.step(view, dt)
 		return
 	end
 	local moving = false
-	local k = 1 - math.exp(-EASE_RATE * dt)
+	local k = motion.blend(EASE_RATE, dt)
 	local tan_half = math.tan(CAMERA_FOV / 2)
 	local world_per_px = 2 * DEPTH * tan_half / view.screen_height
 	for id, piece_view in pairs(view.pieces) do
@@ -158,19 +156,19 @@ function M.step(view, dt)
 		end
 		if slot then
 			local goal = vmath.vector3(slot.x, slot.y, math.min(slot.size, view.height) * (1 + 0.1 * piece_view.emphasis))
-			local goal_rotation = piece_view.goal_rotation or vmath.quat()
+			local goal_rotation = piece_view.goal_rotation
 			if piece_view.screen and near(piece_view.screen, goal, 0.05) and near(piece_view.fx, piece_view.goal_fx, 1e-3)
 				and sameRotation(piece_view.rotation, goal_rotation) then
 				piece_view.screen, piece_view.rotation, piece_view.fx = goal, goal_rotation, piece_view.goal_fx
 			else
 				moving = true
+				piece_view.screen = piece_view.screen and vmath.lerp(k, piece_view.screen, goal) or goal
+				piece_view.rotation = piece_view.rotation and vmath.slerp(k, piece_view.rotation, goal_rotation) or goal_rotation
+				piece_view.fx = vmath.lerp(k, piece_view.fx, piece_view.goal_fx)
 			end
-			piece_view.screen = piece_view.screen and vmath.lerp(k, piece_view.screen, goal) or goal
 			local sx, sy, size = piece_view.screen.x, piece_view.screen.y, piece_view.screen.z
 			local scale = size * world_per_px * SLOT_FILL / view.extent
-			piece_view.rotation = piece_view.rotation and vmath.slerp(k, piece_view.rotation, goal_rotation) or goal_rotation
 			local position = slotToWorld(view, sx, sy, tan_half) - vmath.rotate(piece_view.rotation, piece_view.center) * scale
-			piece_view.fx = vmath.lerp(k, piece_view.fx, piece_view.goal_fx)
 			go.set_position(position, piece_view.go)
 			go.set_rotation(piece_view.rotation, piece_view.go)
 			go.set_scale(scale, piece_view.go)

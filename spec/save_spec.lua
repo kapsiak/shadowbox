@@ -52,7 +52,7 @@ describe("save data", function()
 		local controls = require "input.controls"
 		local prefs = settings.with(settings.new(), "bindings", controls.rebind({}, "turn_left", "j"))
 		local back = save_data.decode(save_data.encode({ progress = progress.new(), settings = prefs, boards = {} }, catalog), catalog)
-		assert.equal("turn_left", controls.keymap(controls.changed(back.settings.bindings)).j)
+		assert.equal("turn_left", controls.keymap(back.settings.bindings).j)
 	end)
 
 	it("survives garbage", function()

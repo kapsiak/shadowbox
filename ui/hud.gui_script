@@ -1,21 +1,21 @@
--- Draws the HUD layout published in ui/hud_model. Buttons ease in and out as the layout
+-- Draws the HUD layout published in ui/models ("hud"). Buttons ease in and out as the layout
 -- gains or loses them (gone at once while a screen change covers the screen); rail buttons also
--- slide in from the right edge. Each element is drawn again only when its spec (the same table
+-- slide in from their screen edge. Each element is drawn again only when its spec (the same table
 -- while the layout is unchanged) or its easing changes.
 local models = require "ui.models"
 local motion = require "view.motion"
+local memo = require "core.memo"
+local draw = require "ui.draw"
 
 local theme = require "view.theme"
 
 local FACE = theme.vec(theme.ui.face)
 local TEXT = { title = theme.vec(theme.ui.ink), body = theme.vec(theme.ui.ink) }
-local FONT_SIZE = { title = 64, body = 40 }
 local ICON = theme.vec(theme.ui.icon)
 local SHADOW = theme.vec(theme.ui.shadow)
 local LIFT = theme.ui.lift
 local EASE_RATE = 14
 local PULSE = 0.86
-local KEY_SIZE = 96
 
 local function createButton(id)
 	local shadow = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
@@ -29,7 +29,7 @@ local function createButton(id)
 	gui.play_flipbook(icon, id)
 	gui.set_color(icon, ICON)
 	gui.set_parent(icon, face)
-	return { face = face, shadow = shadow, icon = icon, shown = 0, scale = 1, enabled = 1, last = nil }
+	return { face = face, shadow = shadow, icon = icon, shown = 0, scale = 1, enabled = 1, last = nil, drawn = {} }
 end
 
 function init(self)
@@ -49,10 +49,13 @@ local function drawTooltip(self, spec, k)
 		for _, node in ipairs({ tip.shadow, tip.face }) do
 			gui.set_texture(node, "hud")
 			gui.play_flipbook(node, "key")
-			gui.set_slice9(node, vmath.vector4(30, 30, 30, 30))
+			gui.set_slice9(node, draw.SLICE)
 		end
 		gui.set_font(tip.text, "body")
 		gui.set_pivot(tip.text, gui.PIVOT_CENTER)
+		for _, node in ipairs({ tip.shadow, tip.face, tip.text }) do
+			gui.set_enabled(node, false)
+		end
 		self.tip = tip
 	end
 	if self.raise_tip then
@@ -74,44 +77,29 @@ local function drawTooltip(self, spec, k)
 	if not t then
 		return
 	end
-	local face, shadow, ink = vmath.vector4(FACE), vmath.vector4(SHADOW), vmath.vector4(TEXT.body)
-	face.w, shadow.w, ink.w = tip.shown, tip.shown, tip.shown
-	-- Sized at the key image's height and scaled down, so the chamfered corners stay whole.
-	local scale = t.h / KEY_SIZE
-	for _, part in ipairs({ { tip.shadow, t.y - t.h * LIFT, shadow }, { tip.face, t.y, face } }) do
-		gui.set_screen_position(part[1], vmath.vector3(t.x, part[2], 0))
-		gui.set_size(part[1], vmath.vector3(t.w / scale, KEY_SIZE, 0))
-		gui.set_scale(part[1], vmath.vector3(scale, scale, 1))
-		gui.set_color(part[1], part[3])
-	end
-	gui.set_text(tip.text, t.text)
-	gui.set_screen_position(tip.text, vmath.vector3(t.x, t.y, 0))
-	local s = t.size / FONT_SIZE.body
-	gui.set_scale(tip.text, vmath.vector3(s, s, 1))
-	gui.set_color(tip.text, ink)
+	draw.placeBar(tip.shadow, t.x, t.y - t.h * LIFT, t.w, t.h, draw.withAlpha(SHADOW, tip.shown))
+	draw.placeBar(tip.face, t.x, t.y, t.w, t.h, draw.withAlpha(FACE, tip.shown))
+	draw.setText(tip.text, "body", t.text, t.x, t.y, t.size, draw.withAlpha(TEXT.body, tip.shown))
 end
 
 local function createLabel(spec)
 	local node = gui.new_text_node(vmath.vector3(), "")
 	gui.set_font(node, spec.style)
 	gui.set_pivot(node, gui.PIVOT_CENTER)
-	return { node = node, shown = 0, scale = spec.id == "banner" and 0.6 or 1 }
+	return { node = node, shown = 0, scale = spec.id == "banner" and 0.6 or 1, drawn = {} }
 end
 
 local function drawLabel(label, k)
 	local spec = label.last
-	local scale = motion.ease(label.scale, 1, k)
-	if spec == label.drawn and scale == label.scale and label.shown == label.drawn_shown then
+	label.scale = motion.ease(label.scale, 1, k)
+	if not memo.changed(label.drawn, spec, label.shown, label.scale) then
 		return
 	end
-	label.drawn, label.drawn_shown, label.scale = spec, label.shown, scale
-	local s = spec.size / FONT_SIZE[spec.style] * label.scale
+	local s = spec.size / draw.FONT_SIZE[spec.style] * label.scale
 	gui.set_text(label.node, spec.text)
 	gui.set_screen_position(label.node, vmath.vector3(spec.x, spec.y, 0))
 	gui.set_scale(label.node, vmath.vector3(s, s, 1))
-	local color = vmath.vector4(TEXT[spec.style])
-	color.w = label.shown
-	gui.set_color(label.node, color)
+	gui.set_color(label.node, draw.withAlpha(TEXT[spec.style], label.shown))
 	gui.set_enabled(label.node, label.shown > 0.01)
 end
 
@@ -136,14 +124,12 @@ local function updateLabels(self, layout, k, covered)
 	end
 end
 
-local function draw(b)
+local function drawButton(b)
 	local spec = b.last
-	if not spec or (spec == b.drawn and b.shown == b.drawn_shown and b.enabled == b.drawn_enabled
-		and b.scale == b.drawn_scale and spec.held == b.drawn_held) then
+	if not spec or not memo.changed(b.drawn, spec, b.shown, b.enabled, b.scale) then
 		return
 	end
-	b.drawn, b.drawn_shown, b.drawn_enabled, b.drawn_scale, b.drawn_held = spec, b.shown, b.enabled, b.scale, spec.held
-	local slide = spec.group == "rail" and (1 - b.shown) * spec.size * 1.5 or 0
+	local slide = spec.slide and spec.slide * (1 - b.shown) * spec.size * 1.5 or 0
 	local visible = b.shown > 0.01
 	gui.set_enabled(b.face, visible)
 	gui.set_enabled(b.shadow, visible)
@@ -155,17 +141,14 @@ local function draw(b)
 	gui.set_size(b.face, vmath.vector3(size, size, 0))
 	gui.set_size(b.shadow, vmath.vector3(size, size, 0))
 	gui.set_size(b.icon, vmath.vector3(size * 0.62, size * 0.62, 0))
-	local face, icon, shadow = vmath.vector4(FACE), vmath.vector4(ICON), vmath.vector4(SHADOW)
-	face.w, shadow.w = face.w * b.shown, shadow.w * b.shown
-	icon.w = b.shown * (0.3 + 0.7 * b.enabled)
-	gui.set_color(b.face, face)
-	gui.set_color(b.shadow, shadow)
-	gui.set_color(b.icon, icon)
+	gui.set_color(b.face, draw.withAlpha(FACE, b.shown))
+	gui.set_color(b.shadow, draw.withAlpha(SHADOW, b.shown))
+	gui.set_color(b.icon, draw.withAlpha(ICON, b.shown * (0.3 + 0.7 * b.enabled)))
 end
 
 function update(self, dt)
 	local layout = models.layout("hud") or EMPTY
-	local k = 1 - math.exp(-EASE_RATE * dt)
+	local k = motion.blend(EASE_RATE, dt)
 	local covered = (models.layout("fade") or 0) > 0.95
 	local present = self.present
 	for id in pairs(present) do
@@ -193,6 +176,6 @@ function update(self, dt)
 		b.shown = (covered and not spec) and 0 or motion.ease(b.shown, spec and 1 or 0, k)
 		b.enabled = motion.ease(b.enabled, (spec and spec.enabled) and 1 or 0, k)
 		b.scale = motion.ease(b.scale, 1, k)
-		draw(b)
+		drawButton(b)
 	end
 end

@@ -1,6 +1,7 @@
--- What each on-screen interface ("hud", "select") should show. Written by main.script each frame
--- and read by the GUI scripts (scripts share one Lua state), so the outer loop stays the only
--- place that decides. A nil layout means the interface is hidden.
+-- What each on-screen interface ("hud", "panel", "select", and the "fade" amount) should show.
+-- Published by the screens in the outer loop's present phase and read by the GUI scripts
+-- (scripts share one Lua state), so the outer loop stays the only place that decides. A nil
+-- layout means the interface is hidden.
 local M = {}
 
 local layouts, presses = {}, {}

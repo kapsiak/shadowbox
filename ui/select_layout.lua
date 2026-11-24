@@ -3,6 +3,7 @@
 -- title shows every chapter. Pure: positions are window pixels with the origin at the bottom left.
 local hot = require "core.hot"
 local progress = require "game.progress"
+local hud_layout = require "ui.hud_layout"
 
 local M = {}
 
@@ -152,8 +153,7 @@ end
 
 -- The key back to the menu, in the top-left corner inside the safe area.
 function M.backKey(screen)
-	local short = math.min(screen.w, screen.h)
-	local size = math.min(math.max(52 * screen.scale, short * 0.075), short * 0.12)
+	local size = hud_layout.keySize(math.min(screen.w, screen.h), screen.scale)
 	local margin = size * 0.35
 	return { x = screen.safe.left + margin + size / 2, y = screen.h - screen.safe.top - margin - size / 2, size = size }
 end

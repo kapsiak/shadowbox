@@ -170,6 +170,21 @@ describe("interpret", function()
 		end
 		assert.same({ "vertical1", "vertical1", "vertical-1", "vertical-1", "right-1" }, turns)
 	end)
+
+	it("acts on keys and buttons alike; held actions let go on release or blur", function()
+		local state, out = interpret.new(100), {}
+		interpret.button("stow", "press", out)
+		interpret.button("stow", "release", out)
+		interpret.gesture(state, { kind = "key", name = "remove", pressed = true }, nil, out)
+		interpret.button("peek", "press", out)
+		interpret.gesture(state, { kind = "key", name = "peek", released = true }, nil, out)
+		interpret.gesture(state, { kind = "blur" }, nil, out)
+		local seen = {}
+		for i, intent in ipairs(out) do
+			seen[i] = intent.kind .. (intent.on == nil and "" or tostring(intent.on))
+		end
+		assert.same({ "remove", "remove", "peektrue", "peekfalse", "peekfalse" }, seen)
+	end)
 end)
 
 describe("controls", function()

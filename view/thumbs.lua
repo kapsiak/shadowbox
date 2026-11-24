@@ -12,11 +12,11 @@ local cameras = require "view.cameras"
 
 local M = {}
 
+-- The target as the render script names it (render/game.render) and as a resource path.
 local TARGET = "thumbs"
 local TARGET_PATH = "/render/thumbs.render_targetc"
 local ATLAS = "/thumbs.texturesetc"
--- The target's size in pixels (render/thumbs.render_target), and the largest grid of cells.
-local SIZE = 2048
+-- The largest grid of cells: the most levels a page can show.
 local GRID_MAX = 6
 local YAW, PITCH = math.rad(-38), math.rad(24)
 local FOV = math.rad(16)
@@ -32,19 +32,26 @@ local SPACING = 100
 local ROTATION = vmath.quat_rotation_x(PITCH) * vmath.quat_rotation_y(YAW)
 local EYE = vmath.rotate(vmath.conj(ROTATION), vmath.vector3(0, 0, 1))
 
--- Cell i of an n x n grid: its left and top edge in target pixels (from the top left, as the
--- atlas counts) and its size.
-local function cellOf(i, n)
-	local size = math.floor(SIZE / n)
+-- The target's colour texture and its side in pixels.
+local function targetImage()
+	local attachment = resource.get_render_target_info(TARGET_PATH).attachments[1]
+	return attachment.texture, attachment.width
+end
+
+-- Cell i of an n x n grid on a target `side` pixels square: its left and top edge in pixels
+-- (from the top left, as the atlas counts) and its size.
+local function cellOf(i, n, side)
+	local size = math.floor(side / n)
 	return (i - 1) % n * size, math.floor((i - 1) / n) * size, size
 end
 
 -- Atlas data for an n x n grid. Every cell of the largest grid has an image, so an image name
 -- stays valid whatever the grid; cells beyond n x n show the first.
 local function atlasData(n)
+	local texture, side = targetImage()
 	local animations, geometries = {}, {}
 	for i = 1, GRID_MAX * GRID_MAX do
-		local x, y, size = cellOf(i <= n * n and i or 1, n)
+		local x, y, size = cellOf(i <= n * n and i or 1, n, side)
 		animations[i] = { id = "cell" .. i, width = size, height = size, frames = { i } }
 		geometries[i] = {
 			vertices = { 0, 0, 0, size, size, size, size, 0 },
@@ -52,7 +59,6 @@ local function atlasData(n)
 			indices = { 0, 1, 2, 0, 2, 3 },
 		}
 	end
-	local texture = resource.get_render_target_info(TARGET_PATH).attachments[1].texture
 	return { texture = texture, animations = animations, geometries = geometries }
 end
 
@@ -61,35 +67,29 @@ function M.createAtlas()
 	return resource.create_atlas(ATLAS, atlasData(1))
 end
 
--- atlas: the path from M.createAtlas.
+-- atlas: the path from M.createAtlas. Boards are `built` in one frame and `shooting` (drawn)
+-- in the next; next_cell is the next spec to build.
 function M.new(pool, atlas)
-	return { pool = pool, atlas = atlas, n = 1, queue = {}, built = {}, shooting = {}, images = {} }
+	local _, side = targetImage()
+	return { pool = pool, atlas = atlas, side = side, n = 1, next_cell = 1, built = {}, shooting = {}, images = {} }
 end
 
-local function releaseAll(thumbs)
-	for _, list in ipairs({ thumbs.built, thumbs.shooting }) do
-		for i = #list, 1, -1 do
-			board_pool.release(list[i].slot)
-			list[i] = nil
-		end
+local function releaseEach(list)
+	for i = #list, 1, -1 do
+		board_pool.release(list[i].slot)
+		list[i] = nil
 	end
 end
 
--- Begins drawing a new set: the old images are dropped and every spec is queued.
+-- Begins drawing a new set: the old images and boards are dropped and every spec waits.
 local function start(thumbs, specs, prefs)
 	assert(#specs <= GRID_MAX * GRID_MAX, "thumbs: more levels than thumbnail cells")
-	releaseAll(thumbs)
-	thumbs.specs, thumbs.prefs, thumbs.images, thumbs.clear = specs, prefs, {}, true
+	releaseEach(thumbs.built)
+	thumbs.specs, thumbs.prefs, thumbs.images, thumbs.clear, thumbs.next_cell = specs, prefs, {}, true, 1
 	local n = math.max(1, math.ceil(math.sqrt(#specs)))
 	if n ~= thumbs.n then
 		thumbs.n = n
 		resource.set_atlas(thumbs.atlas, atlasData(n))
-	end
-	for i = #thumbs.queue, 1, -1 do
-		thumbs.queue[i] = nil
-	end
-	for i = 1, #specs do
-		thumbs.queue[i] = i
 	end
 end
 
@@ -106,9 +106,9 @@ local function build(thumbs, spec, cell)
 	go.set_position(at - vmath.rotate(ROTATION, center), slot.anchor)
 	go.set_rotation(ROTATION, slot.anchor)
 	local distance = radius / (2 * FIT * math.tan(FOV / 2))
-	local x, top, size = cellOf(cell, thumbs.n)
+	local x, top, size = cellOf(cell, thumbs.n, thumbs.side)
 	local shot = cameras.shot(at + vmath.vector3(0, 0, distance), vmath.quat(), FOV, 1,
-		math.max(0.05, distance - 3 * radius), distance + 3 * radius, x, SIZE - top - size, size, size)
+		math.max(0.05, distance - 3 * radius), distance + 3 * radius, x, thumbs.side - top - size, size, size)
 	return { id = spec.id, cell = cell, slot = slot, shot = shot }
 end
 
@@ -116,33 +116,35 @@ end
 -- (or new prefs: colours, patterns, contrast) draws them all again. thumbs.images then maps each
 -- drawn spec's id to its image name.
 function M.present(thumbs, specs, prefs)
-	for i, t in ipairs(thumbs.shooting) do
-		board_pool.release(t.slot)
+	for _, t in ipairs(thumbs.shooting) do
 		thumbs.images[t.id] = "cell" .. t.cell
-		thumbs.shooting[i] = nil
 	end
+	releaseEach(thumbs.shooting)
 	if specs ~= thumbs.specs or prefs ~= thumbs.prefs then
 		start(thumbs, specs, prefs)
 	end
-	if #thumbs.built > 0 then
+	thumbs.shooting, thumbs.built = thumbs.built, thumbs.shooting
+	if #thumbs.shooting > 0 then
 		local shots = {}
-		for i, t in ipairs(thumbs.built) do
-			shots[i], thumbs.shooting[i], thumbs.built[i] = t.shot, t, nil
+		for i, t in ipairs(thumbs.shooting) do
+			shots[i] = t.shot
 		end
 		cameras.setShots("thumbs", TARGET, thumbs.clear, shots)
 		thumbs.clear = false
 	else
 		cameras.clear("thumbs")
 	end
-	for _ = 1, math.min(BUILDS_PER_FRAME, #thumbs.queue) do
-		local i = table.remove(thumbs.queue, 1)
-		thumbs.built[#thumbs.built + 1] = build(thumbs, specs[i], i)
+	while #thumbs.built < BUILDS_PER_FRAME and thumbs.next_cell <= #specs do
+		local cell = thumbs.next_cell
+		thumbs.built[#thumbs.built + 1] = build(thumbs, specs[cell], cell)
+		thumbs.next_cell = cell + 1
 	end
 end
 
 -- Returns every board to the pool and stops drawing.
 function M.release(thumbs)
-	releaseAll(thumbs)
+	releaseEach(thumbs.built)
+	releaseEach(thumbs.shooting)
 	cameras.clear("thumbs")
 end
 

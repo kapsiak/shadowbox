@@ -2,6 +2,7 @@
 -- Modal sheets sit centred on a card; others stack in the lower part of the screen, or, for a
 -- `side` sheet on a wide screen, form a column on the left under a left-aligned heading.
 local hot = require "core.hot"
+local measure = require "ui.measure"
 local M = {}
 
 local ROW_DP = 54
@@ -13,11 +14,14 @@ M.SIDE = 0.4
 -- A rule card's scene, in rows; its paragraph's type size and line height, in rows.
 local SCENE_ROWS = 4.2
 local TEXT_SIZE, LINE = 0.36, 1.4
+-- Labels' type size, in rows; headings' average character width, in ems (the title font is wider).
+local LABEL_SIZE = 0.36
+local HEADING_EM = 0.55
 
--- The height of a paragraph wrapped to `width`, at about 0.5 em per character.
+-- The height of a paragraph wrapped to `width`.
 local function paragraphHeight(text, width, size)
-	local per_line = math.max(1, math.floor(width / (0.5 * size)))
-	return (math.ceil(#text / per_line) + 0.4) * size * LINE
+	local per_line = math.max(1, math.floor(width / (measure.EM * size)))
+	return (math.ceil(measure.length(text) / per_line) + 0.4) * size * LINE
 end
 
 -- Whether a side sheet stands in a column beside the scene rather than below it.
@@ -26,8 +30,8 @@ function M.sideBySide(screen)
 end
 
 -- screen: { w, h, scale, safe }. Returns { modal, card, title, scene, text, items } where each
--- item has x, y (centre), w, h, and for sliders the track's left edge and width; scene is a
--- rectangle { x, y, w, h } (centre) and text { text, x, y, w, size } a paragraph.
+-- item has x, y (centre), w, h, label_size, and for sliders the track's left edge and width;
+-- scene is a rectangle { x, y, w, h } (centre) and text { text, x, y, w, size } a paragraph.
 function M.compute(screen, sheet)
 	local w, h = screen.w, screen.h
 	local short = math.min(w, h)
@@ -44,8 +48,8 @@ function M.compute(screen, sheet)
 	local content_h = rows * row + (rows - 1) * gap + title_h + scene_h + text_h
 	local pad = sheet.modal and row * 0.5 or 0
 
-	-- A side heading and its mark fit the column, at about 0.55 em per character.
-	local heading_em = 0.55 * #(sheet.heading or "x") + MARK_EM + MARK_GAP
+	-- A side heading and its mark fit the column.
+	local heading_em = measure.width(sheet.heading or "x", 1, HEADING_EM) + MARK_EM + MARK_GAP
 	local heading_size = side and math.min(row * 1.3, width / heading_em) or row
 	local top
 	if sheet.modal then
@@ -84,14 +88,14 @@ function M.compute(screen, sheet)
 	local y = top - title_h - scene_h - text_h - row / 2
 	local bottom = top - content_h + row / 2
 	for _, item in ipairs(sheet.items) do
-		local placed = { x = cx, y = item.footer and bottom or y, w = width, h = row }
+		local placed = { x = cx, y = item.footer and bottom or y, w = width, h = row, label_size = row * LABEL_SIZE }
 		for k, v in pairs(item) do
 			placed[k] = v
 		end
 		if item.kind == "slider" or item.kind == "choice" or item.kind == "keys" then
-			-- The control takes what the label leaves (labels are drawn at 0.36 rows from 0.4
-			-- rows in, at about 0.5 em per character), up to its usual share of the row.
-			local label_end = row * 0.4 + #item.label * 0.5 * row * 0.36 + row * 0.3
+			-- The control takes what the label leaves (labels start 0.4 rows in), up to its usual
+			-- share of the row.
+			local label_end = row * 0.4 + measure.width(item.label, row * LABEL_SIZE) + row * 0.3
 			local share = item.segments and #item.segments > 3 and 0.58 or 0.5
 			local track = math.min(share, 0.95 - label_end / width)
 			placed.track_x, placed.track_w = cx + width * (0.45 - track), width * track

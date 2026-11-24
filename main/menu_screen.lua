@@ -11,6 +11,7 @@ local interpret = require "input.interpret"
 local models = require "ui.models"
 local panel_layout = require "ui.panel_layout"
 local card_scene = require "view.card_scene"
+local memo = require "core.memo"
 
 local M = {}
 
@@ -28,7 +29,7 @@ function M.enter(showcase, pool, rules)
 		rig = orbit.new(board_view.bounds(showcase)),
 		interpreter = interpret.new(1),
 		display = { poses = showcase.solution, evaluation = core_rules.evaluate(showcase, { poses = showcase.solution }) },
-		rules = rules, card_scene = card_scene.new(pool),
+		rules = rules, card_scene = card_scene.new(pool), lens_inputs = {},
 	}
 	screen.rig.goal.pitch = math.rad(-22)
 	screen.rig.goal.zoom, screen.rig.current.zoom = ZOOM, ZOOM
@@ -88,15 +89,16 @@ function M.present(screen, dt, info)
 	if not info.settings.reduced_motion then
 		screen.rig.goal.yaw = screen.rig.goal.yaw + SPIN * dt
 	end
-	orbit.step(screen.rig, dt)
 	local side = panel_layout.sideBySide(info)
-	local insets = side and SIDE_INSETS or INSETS
 	screen.rig.goal.zoom = side and SIDE_ZOOM or ZOOM
-	local position, rotation, fov, near, far = orbit.lens(screen.rig, w / h, insets)
-	cameras.set("board", position, rotation, fov, w / h, near, far)
+	if orbit.step(screen.rig, dt) or memo.changed(screen.lens_inputs, w, h, side) then
+		local position, rotation, fov, near, far = orbit.lens(screen.rig, w / h, side and SIDE_INSETS or INSETS)
+		cameras.set("board", position, rotation, fov, w / h, near, far)
+		screen.eye = orbit.eyeDirection(screen.rig)
+	end
 	board_view.configure(screen.board, info.settings)
 	board_view.present(screen.board, screen.display, nil, nil)
-	board_view.step(screen.board, dt, orbit.eyeDirection(screen.rig), 0)
+	board_view.step(screen.board, dt, screen.eye, 0)
 	local sheet = M.layout(screen, info)
 	models.publish("panel", sheet)
 	card_scene.present(screen.card_scene, sheets.cardLevel(screen), sheet and sheet.scene, dt, info.settings)

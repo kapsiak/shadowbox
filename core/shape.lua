@@ -41,7 +41,8 @@ function M.new(cells)
 	return { forms = forms, size = #cells }, { anchor[1], anchor[2], anchor[3] }
 end
 
-local function bounds(cells)
+-- The lowest and highest coordinate on each axis of `cells`.
+function M.bounds(cells)
 	local lo, hi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
 	for _, c in ipairs(cells) do
 		for a = 1, 3 do
@@ -68,7 +69,7 @@ function M.rest(cells)
 		for i, c in ipairs(cells) do
 			turned[i] = orient.apply(n, c)
 		end
-		local lo, hi = bounds(turned)
+		local lo, hi = M.bounds(turned)
 		local parts = {}
 		for i, c in ipairs(turned) do
 			turned[i] = { c[1] - lo[1] + 0, c[2] - lo[2] + 0, c[3] - lo[3] + 0 }
@@ -85,11 +86,11 @@ end
 
 -- The pose that puts the shape exactly on `cells`, or nil if no orientation fits.
 function M.poseOf(shape, cells)
-	local target_lo = bounds(cells)
+	local target_lo = M.bounds(cells)
 	local target = cellSet(cells, { 0, 0, 0 })
 	for n = 1, orient.count do
 		local form = shape.forms[n]
-		local lo = bounds(form)
+		local lo = M.bounds(form)
 		local cell = { target_lo[1] - lo[1], target_lo[2] - lo[2], target_lo[3] - lo[3] }
 		local fits = true
 		for key in pairs(cellSet(form, cell)) do

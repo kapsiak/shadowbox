@@ -10,8 +10,9 @@ local projection = require "core.projection"
 
 local M = {}
 
-local function checkPlace(level, state, id, pose)
-	local occupied = grid.occupancy(level, state.poses, id)
+-- Placing piece `id` at `pose`, given the cells the other pieces occupy (grid.occupancy without
+-- `id`), so callers trying many poses build the occupancy once.
+function M.checkPlace(level, occupied, id, pose)
 	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
 		if not grid.contains(level.size, c) then
 			return nil, "out_of_bounds"
@@ -28,7 +29,7 @@ function M.check(level, state, command)
 		return nil, "unknown_piece"
 	end
 	if command.kind == "place" then
-		return checkPlace(level, state, command.piece, command.pose)
+		return M.checkPlace(level, grid.occupancy(level, state.poses, command.piece), command.piece, command.pose)
 	end
 	if command.kind == "remove" then
 		return { changes = { { piece = command.piece } } }

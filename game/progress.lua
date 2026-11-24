@@ -28,8 +28,13 @@ function M.data(progress)
 	return { solved = progress.solved, seen = progress.seen }
 end
 
+-- `seen` is replaced rather than changed, so a change shows as a new table.
 function M.markSeen(progress, card)
-	progress.seen[card] = true
+	local seen = { [card] = true }
+	for id in pairs(progress.seen) do
+		seen[id] = true
+	end
+	progress.seen = seen
 end
 
 function M.isSolved(progress, key)

@@ -1,5 +1,6 @@
 -- The content of each text panel ("sheet"), as plain data. Pure: a sheet is
--- { title, note, modal, scene, text, items = { { id, kind = "button" | "toggle" | "slider", label, value, primary } } }.
+-- { title, heading, note, modal, side, scene, text, rows, items = { { id, kind, label, value, primary } } }
+-- with kind "button", "toggle", "slider", "choice", "tabs" or "keys".
 -- `scene` reserves room for a live 3D scene (a rule card's) and `text` is a paragraph under it.
 -- Modal sheets dim the screen behind them and sit on a card; the main menu does not, and stands
 -- beside the scene on wide screens (`side`).
@@ -101,9 +102,8 @@ local function keyItems(prefs, page, rebinding)
 		rows = p.id == page and p.rows or rows
 	end
 	local items = { { id = "keys_page", kind = "tabs", segments = labels, values = values, value = page } }
-	local bindings = controls.changed(prefs.bindings)
 	for _, row in ipairs(rows) do
-		items[#items + 1] = keyRow(row, bindings, rebinding)
+		items[#items + 1] = keyRow(row, prefs.bindings, rebinding)
 	end
 	if page == "other" then
 		items[#items + 1] = { id = "reset_keys", kind = "button", label = "Reset keys", danger = true }
