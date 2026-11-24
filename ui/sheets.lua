@@ -1,6 +1,7 @@
 -- The content of each text panel ("sheet"), as plain data. Pure: a sheet is
--- { title, heading, note, modal, side, scene, text, rows, items = { { id, kind, label, value, primary } } }
+-- { title, heading, caption, note, modal, side, scene, text, rows, items = { { id, kind, label, value, primary, inline } } }
 -- with kind "button", "toggle", "slider", "choice", "tabs" or "keys".
+-- An `inline` item shares the row of the item before it.
 -- `scene` reserves room for a live 3D scene (a rule card's) and `text` is a paragraph under it.
 -- Modal sheets dim the screen behind them and sit on a card; the main menu does not, and stands
 -- beside the scene on wide screens (`side`).
@@ -12,8 +13,9 @@ local controls = require "input.controls"
 local M = {}
 
 -- has_rules: whether any rule card has been seen, so the Rules list has something to show;
--- version: the build's version, shown small in a corner.
-function M.mainMenu(title, version, can_continue, has_rules)
+-- version: the build's version, shown small in the bottom-right corner; can_quit: whether the app may close
+-- itself (not in a browser or on a phone); solved, total: levels solved and in all.
+function M.mainMenu(title, version, can_continue, has_rules, can_quit, solved, total)
 	local items = {
 		{ id = "continue", kind = "button", label = can_continue and "Continue" or "Play", primary = true },
 		{ id = "levels", kind = "button", label = "Levels" },
@@ -22,7 +24,36 @@ function M.mainMenu(title, version, can_continue, has_rules)
 		items[#items + 1] = { id = "rules", kind = "button", label = "Rules" }
 	end
 	items[#items + 1] = { id = "settings", kind = "button", label = "Settings" }
-	return { heading = title, note = version ~= "" and "v" .. version or nil, modal = false, side = true, items = items }
+	items[#items + 1] = { id = "credits", kind = "button", label = "Credits" }
+	if can_quit then
+		items[#items + 1] = { id = "quit", kind = "button", label = "Quit", inline = true }
+	end
+	return {
+		heading = title, caption = solved > 0 and ("%d of %d levels solved"):format(solved, total) or nil,
+		note = version ~= "" and "v" .. version or nil, modal = false, side = true, items = items,
+	}
+end
+
+-- has_next: whether a chapter follows this one.
+function M.chapterComplete(pack_title, has_next)
+	local items = {}
+	if has_next then
+		items[#items + 1] = { id = "next", kind = "button", label = "Next chapter", primary = true }
+	end
+	items[#items + 1] = { id = "levels", kind = "button", label = "Levels", primary = not has_next }
+	return { title = "Chapter complete", modal = true, text = pack_title, items = items }
+end
+
+function M.credits(title)
+	return {
+		title = "Credits",
+		modal = true,
+		text = title .. " by Charlie Kapsiak\n\n"
+			.. "Made with Defold\nCopyright 2020 The Defold Foundation\n\n"
+			.. "Set in Outfit by The Outfit Project Authors\n\n"
+			.. "The full licences ship with the game",
+		items = { { id = "done", kind = "button", label = "Done", primary = true, footer = true } },
+	}
 end
 
 -- One rule card (catalog.loadRules); `more` when further cards follow it; touch: whether to

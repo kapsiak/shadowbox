@@ -5,6 +5,7 @@
 # bundles/<version>-demo/.
 # Web zips hold index.html at their root, as itch.io expects. Bob's build_input_data.json (git
 # remote, commit, library versions) stays beside each bundle as a record, out of the zips.
+# Each zip carries the licences the game must ship with (Defold, the Outfit font).
 set -eu
 cd "$(dirname "$0")/.."
 version=$(sed -n 's/^version = //p' game.project | head -n 1)
@@ -31,5 +32,6 @@ for platform in ${*:-wasm-web}; do
 	else
 		(cd "$out/$platform" && zip -qr "$zip_path" . -x build_input_data.json)
 	fi
+	zip -qj "$zip_path" legal/Defold-LICENSE.txt assets/fonts/OFL-Outfit.txt
 	echo "$zip_path"
 done

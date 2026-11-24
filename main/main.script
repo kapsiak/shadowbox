@@ -12,7 +12,7 @@
 --   gesture(screen, g, intents), apply(screen, intent, dt) -> request or nil,
 --   present(screen, dt, info), exit(screen)
 -- Requests: { to = "menu" | "select" | "continue" | "next" | "play", pack, index },
---           { setting = key, value = v }, { reset_progress = true }, { seen = card id }
+--           { setting = key, value = v }, { reset_progress = true }, { seen = card id }, { quit = true }
 local catalog_loader = require "main.catalog"
 local storage = require "main.storage"
 local menu_screen = require "main.menu_screen"
@@ -114,6 +114,10 @@ local function screenInfo(self)
 	return info
 end
 
+local function countSolved(self)
+	self.info.solved, self.info.total = progress.totals(self.saved, self.catalog)
+end
+
 local function switchTo(self, screen)
 	flush(self)
 	if self.screen then
@@ -200,7 +204,11 @@ local function handle(self, request)
 		self.last = nil
 		self.boards = {}
 		self.sessions = {}
+		countSolved(self)
 		save(self)
+	elseif request.quit then
+		flush(self)
+		sys.exit(0)
 	end
 end
 
@@ -246,7 +254,11 @@ local function record(self)
 		end
 		if screen.solved and not progress.isSolved(self.saved, screen.key) then
 			progress.markSolved(self.saved, screen.key)
+			countSolved(self)
 			save(self)
+			if progress.solvedCount(self.saved, screen.pack) == #screen.pack.keys then
+				play_screen.chapterComplete(screen, self.catalog.packs[self.last.pack + 1] ~= nil)
+			end
 		end
 	end
 	autosave(self)
@@ -287,7 +299,7 @@ function init(self)
 	go.set("/select#select", "textures", self.thumb_atlas, { key = "thumbs" })
 	self.info = {
 		w = 0, h = 0, display_scale = 1, scale = 0, geometry = 0, safe = {},
-		can_fullscreen = can_fullscreen, has_keyboard = not mobile,
+		can_fullscreen = can_fullscreen, has_keyboard = not mobile, can_quit = not html5 and not mobile,
 		title = sys.get_config_string("project.title", ""),
 		version = sys.get_config_string("project.version", ""),
 	}
@@ -300,10 +312,14 @@ function init(self)
 	self.last = data.last
 	self.boards = data.boards
 	self.sessions = {}
+	countSolved(self)
 	window.set_listener(function(_, event)
 		if event == window.WINDOW_EVENT_FOCUS_LOST or event == window.WINDOW_EVENT_ICONIFIED then
 			self.raw_input[#self.raw_input + 1] = { kind = "blur" }
+			audio.setFocused(false)
 			flush(self)
+		elseif event == window.WINDOW_EVENT_FOCUS_GAINED or event == window.WINDOW_EVENT_DEICONIFIED then
+			audio.setFocused(true)
 		elseif event == window.WINDOW_EVENT_RESIZED then
 			self.resized = true
 			if can_fullscreen and defos.is_fullscreen() ~= self.settings.fullscreen then

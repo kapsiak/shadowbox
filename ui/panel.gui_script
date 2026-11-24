@@ -208,6 +208,7 @@ function init(self)
 	gui.set_line_break(self.paragraph, true)
 	self.heading = text("title")
 	self.note = text("body")
+	self.caption = text("body")
 	self.mark = box("mark")
 	self.mark_accent = box("mark_accent")
 	self.items = {}
@@ -243,7 +244,12 @@ local function drawFrame(self, layout, a, w, h)
 	gui.set_enabled(self.note, layout.note ~= nil)
 	if layout.note then
 		local t = layout.note
-		writeText(self.note, "body", t.text, t.x, t.y, t.size, withAlpha(SOFT_INK, a), gui.PIVOT_SW)
+		writeText(self.note, "body", t.text, t.x, t.y, t.size, withAlpha(SOFT_INK, a), gui.PIVOT_SE)
+	end
+	gui.set_enabled(self.caption, layout.caption ~= nil)
+	if layout.caption then
+		local t = layout.caption
+		writeText(self.caption, "body", t.text, t.x, t.y, t.size, withAlpha(SOFT_INK, a), gui.PIVOT_W)
 	end
 	gui.set_enabled(self.heading, layout.heading ~= nil)
 	gui.set_enabled(self.mark, layout.heading ~= nil)
@@ -257,7 +263,7 @@ local function drawFrame(self, layout, a, w, h)
 end
 
 local function hideFrame(self)
-	for _, node in ipairs({ self.dim, self.card_shadow, self.card, self.title, self.paragraph, self.heading, self.note, self.mark, self.mark_accent }) do
+	for _, node in ipairs({ self.dim, self.card_shadow, self.card, self.title, self.paragraph, self.heading, self.note, self.caption, self.mark, self.mark_accent }) do
 		gui.set_enabled(node, false)
 	end
 end

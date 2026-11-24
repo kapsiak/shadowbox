@@ -53,6 +53,15 @@ function M.solvedCount(progress, pack)
 	return n
 end
 
+-- Levels solved and levels in all, across the catalog.
+function M.totals(progress, catalog)
+	local solved, total = 0, 0
+	for _, pack in ipairs(catalog.packs) do
+		solved, total = solved + M.solvedCount(progress, pack), total + #pack.keys
+	end
+	return solved, total
+end
+
 -- open_all (a player setting) opens every pack and level.
 function M.isPackOpen(progress, catalog, pack_index, open_all)
 	if open_all or pack_index == 1 then

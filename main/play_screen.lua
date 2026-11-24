@@ -28,6 +28,8 @@ local TRAY_BACKDROP = "/tray_backdrop#mesh"
 local TIP_DELAY = 0.45
 
 local PEEK_RATE = 14
+-- The chapter-complete card waits for the solve's celebration.
+local CHAPTER_DELAY = 1.2
 
 local LIFT_DP = 70
 local SWIPE_DP = 50
@@ -85,6 +87,12 @@ function M.exit(screen)
 	cameras.clear("tray")
 	models.publish("hud", nil)
 	models.publish("panel", nil)
+end
+
+-- The level just solved completed its chapter for the first time; has_next: whether a chapter
+-- follows.
+function M.chapterComplete(screen, has_next)
+	screen.chapter_wait, screen.has_next_chapter = CHAPTER_DELAY, has_next
 end
 
 -- The board as it stands, for saving.
@@ -315,6 +323,14 @@ function M.present(screen, dt, info)
 			s.selected = nil
 			board_view.celebrate(screen.board)
 			audio.cue("solve")
+		end
+	end
+
+	if screen.chapter_wait then
+		screen.chapter_wait = screen.chapter_wait - dt
+		if screen.chapter_wait <= 0 then
+			screen.chapter_wait = nil
+			sheets.open(screen, "chapter")
 		end
 	end
 

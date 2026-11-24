@@ -35,7 +35,12 @@ function M.cardLevel(screen)
 end
 
 local builders = {
-	main_menu = function(info) return content.mainMenu(info.title, info.version, info.can_continue, next(info.seen) ~= nil) end,
+	main_menu = function(info)
+		return content.mainMenu(info.title, info.version, info.can_continue, next(info.seen) ~= nil, info.can_quit,
+			info.solved, info.total)
+	end,
+	chapter = function(_, screen) return content.chapterComplete(screen.pack.title, screen.has_next_chapter) end,
+	credits = function(info) return content.credits(info.title) end,
 	rule = function(info, screen) return content.rule(screen.rules[screen.cards[1]], #screen.cards > 1, not info.has_keyboard) end,
 	rules = function(info, screen) return content.rules(screen.rules, info.seen) end,
 	pause = function() return content.pause() end,
@@ -52,7 +57,7 @@ local builders = {
 function M.layout(screen, info)
 	local name, cards = M.top(screen), screen.cards
 	screen.sheet_inputs = screen.sheet_inputs or {}
-	if memo.changed(screen.sheet_inputs, name, info.geometry, info.settings, info.can_continue, info.seen,
+	if memo.changed(screen.sheet_inputs, name, info.geometry, info.settings, info.can_continue, info.seen, info.solved,
 		cards and cards[1], cards and #cards, screen.keys_page, screen.rebinding, screen.settings_tab) then
 		screen.sheet_layout = name and panel_layout.compute(info, builders[name](info, screen)) or nil
 	end
@@ -145,6 +150,10 @@ function M.apply(screen, intent)
 		M.open(screen, "rules")
 	elseif id == "settings" then
 		M.open(screen, "settings")
+	elseif id == "credits" then
+		M.open(screen, "credits")
+	elseif id == "quit" then
+		return { quit = true }
 	elseif id == "reset_progress" then
 		M.open(screen, "confirm_reset")
 	elseif id == "confirm_reset" then
@@ -162,6 +171,8 @@ function M.apply(screen, intent)
 		return { to = "menu" }
 	elseif id == "continue" then
 		return { to = "continue" }
+	elseif id == "next" then
+		return { to = "next" }
 	end
 end
 
