@@ -17,6 +17,8 @@ local audio = require "view.audio"
 local card_scene = require "view.card_scene"
 local lessons = require "game.lessons"
 local controls = require "input.controls"
+local motion = require "view.motion"
+local memo = require "core.memo"
 
 local M = {}
 
@@ -25,20 +27,24 @@ local TRAY_BACKDROP = "/tray_backdrop#mesh"
 -- does not hover), until it leaves or presses.
 local TIP_DELAY = 0.45
 
+local PEEK_RATE = 14
+
 local LIFT_DP = 70
 local SWIPE_DP = 50
 
--- The tooltip for the button under the pointer: its action and first key.
-local function tipFor(tip, bindings)
-	if not tip or tip.pressed or tip.t < TIP_DELAY then
-		return nil
-	end
-	local action = controls.forButton(tip.id)
+-- The button whose tooltip shows, or nil.
+local function shownTip(tip)
+	return tip and not tip.pressed and tip.t >= TIP_DELAY and tip.id or nil
+end
+
+-- The tooltip for button `id`: its action and first key.
+local function tipFor(id, bindings)
+	local action = id and controls.forButton(id)
 	if not action then
 		return nil
 	end
 	local keys = controls.keysOf(controls.changed(bindings), action.id)
-	return { id = tip.id, text = keys[1] and action.label .. "   " .. controls.keyLabel(keys[1]) or action.label }
+	return { id = id, text = keys[1] and action.label .. "   " .. controls.keyLabel(keys[1]) or action.label }
 end
 
 local function toTable(v)
@@ -61,6 +67,8 @@ function M.enter(pack, index, pool, factories, saved, session, rules, seen)
 		tray = tray_view.create(lvl, factories, slot.buffers),
 		rig = orbit.new(board_view.bounds(lvl)),
 		rules = rules, card_scene = card_scene.new(pool),
+		peek = false, peek_amount = 0, hud_inputs = {}, ui = {},
+		subtitle = ("%s  ·  %d / %d"):format(pack.title, index, #pack.levels),
 	}
 	local unseen = lessons.unseen(seen, lvl)
 	if #unseen > 0 then
@@ -84,19 +92,20 @@ function M.board(screen)
 	return play.current(screen.session).poses
 end
 
+-- The HUD is laid out again only when something it depends on changes.
 function M.layout(screen, info)
-	local s = screen.session
+	local s, safe, prefs = screen.session, info.safe, info.settings
 	screen.info = info
-	screen.hud = hud_layout.compute(info, {
-		piece_controls = s.selected ~= nil and not screen.solved,
-		can_undo = play.canUndo(s),
-		can_redo = play.canRedo(s),
-		title = s.level.name,
-		subtitle = ("%s  ·  %d / %d"):format(screen.pack.title, screen.index, #screen.pack.levels),
-		solved = screen.solved,
-		left_handed = info.settings.left_handed,
-		tip = #screen.sheets == 0 and tipFor(screen.tip, info.settings.bindings) or nil,
-	})
+	local piece_controls, can_undo, can_redo = s.selected ~= nil and not screen.solved, play.canUndo(s), play.canRedo(s)
+	local tip = #screen.sheets == 0 and shownTip(screen.tip) or nil
+	if memo.changed(screen.hud_inputs, info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
+		prefs.left_handed, prefs.bindings, piece_controls, can_undo, can_redo, screen.solved, screen.peek, tip) then
+		screen.hud = hud_layout.compute(info, {
+			piece_controls = piece_controls, can_undo = can_undo, can_redo = can_redo,
+			title = s.level.name, subtitle = screen.subtitle, solved = screen.solved,
+			left_handed = prefs.left_handed, peek = screen.peek, tip = tipFor(tip, prefs.bindings),
+		})
+	end
 	return screen.hud
 end
 
@@ -107,7 +116,8 @@ function M.hit(screen, x, y)
 	return hit.find(screen.hud.buttons, x, y)
 end
 
--- HUD buttons act on press; while a sheet is open, controls belong to the sheet.
+-- HUD buttons act on press (held ones also on release); while a sheet is open, controls
+-- belong to the sheet.
 function M.button(screen, ev, intents)
 	if #screen.sheets > 0 then
 		if ev.phase == "press" then
@@ -119,7 +129,9 @@ function M.button(screen, ev, intents)
 			screen.tip.pressed = true
 		end
 		models.pressed("hud", ev.id)
-		interpret.button(ev.id, intents)
+		interpret.button(ev.id, "press", intents)
+	elseif ev.phase == "release" then
+		interpret.button(ev.id, "release", intents)
 	end
 end
 
@@ -222,6 +234,9 @@ function M.apply(screen, intent, dt)
 		return sheets.apply(screen, intent)
 	elseif applyCamera(screen, intent, dt) then
 		return nil
+	elseif kind == "peek" then
+		screen.peek = intent.on
+		return nil
 	elseif kind == "rules" then
 		sheets.open(screen, "rules")
 		screen.session.drag = nil
@@ -303,22 +318,34 @@ function M.present(screen, dt, info)
 		end
 	end
 
+	if #screen.sheets > 0 then
+		screen.peek = false
+	end
+	screen.peek_amount = motion.ease(screen.peek_amount, screen.peek and 1 or 0, motion.blend(PEEK_RATE, dt))
+
 	local layout = M.layout(screen, info)
-	orbit.step(screen.rig, dt)
-	local position, rotation, fov, near, far = orbit.lens(screen.rig, w / h, layout.insets)
-	cameras.set("board", position, rotation, fov, w / h, near, far)
+	if orbit.step(screen.rig, dt) or not screen.eye or layout.insets ~= screen.lens_insets or w / h ~= screen.lens_aspect then
+		screen.lens_insets, screen.lens_aspect = layout.insets, w / h
+		local position, rotation, fov, near, far = orbit.lens(screen.rig, w / h, layout.insets)
+		cameras.set("board", position, rotation, fov, w / h, near, far)
+		screen.rotation, screen.eye = rotation, orbit.eyeDirection(screen.rig)
+	end
 
 	board_view.configure(screen.board, info.settings)
 	tray_view.configure(screen.tray, info.settings)
 	board_view.present(screen.board, display, s.selected, screen.hovered)
-	board_view.step(screen.board, dt, orbit.eyeDirection(screen.rig), orbit.xray(screen.rig))
-	local ui = { selected = s.selected, hovered = screen.hovered, pointer = screen.pointer, held = s.held }
-	tray_view.present(screen.tray, display, ui, w, h, hud_layout.TRAY_INSET, rotation)
+	board_view.step(screen.board, dt, screen.eye, math.max(orbit.xray(screen.rig), screen.peek_amount))
+	local ui = screen.ui
+	ui.selected, ui.hovered, ui.pointer, ui.held = s.selected, screen.hovered, screen.pointer, s.held
+	tray_view.present(screen.tray, display, ui, w, h, hud_layout.TRAY_INSET, screen.rotation)
 	tray_view.step(screen.tray, dt)
 
-	local t = layout.tray
-	go.set(TRAY_BACKDROP, "rect", vmath.vector4(t.x, t.y, t.w, t.h))
-	go.set(TRAY_BACKDROP, "screen", vmath.vector4(w, h, 0, 0))
+	if layout ~= screen.backdrop_layout then
+		screen.backdrop_layout = layout
+		local t = layout.tray
+		go.set(TRAY_BACKDROP, "rect", vmath.vector4(t.x, t.y, t.w, t.h))
+		go.set(TRAY_BACKDROP, "screen", vmath.vector4(w, h, 0, 0))
+	end
 	models.publish("hud", layout)
 	local sheet = sheets.layout(screen, info)
 	models.publish("panel", sheet)

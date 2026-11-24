@@ -26,6 +26,7 @@ M.actions = {
 	{ id = "orbit_down", label = "Orbit down", keys = { "down" } },
 	{ id = "zoom_in", label = "Zoom in", keys = { "equals" } },
 	{ id = "zoom_out", label = "Zoom out", keys = { "minus" } },
+	{ id = "peek", label = "Peek at walls (hold)", keys = { "space" }, button = "peek" },
 	{ id = "undo", label = "Undo", keys = { "z" }, button = "undo" },
 	{ id = "redo", label = "Redo", keys = { "y" }, button = "redo" },
 	{ id = "rules", label = "Rules", keys = { "h" }, button = "rules" },
@@ -49,7 +50,7 @@ M.pages = {
 	} },
 	{ id = "camera", label = "Camera", rows = {
 		{ "Views", "view_front", "view_side", "view_top", "view_iso" }, { "Orbit", "orbit_left", "orbit_right" },
-		{ "Tilt", "orbit_up", "orbit_down" }, { "Zoom", "zoom_in", "zoom_out" },
+		{ "Tilt", "orbit_up", "orbit_down" }, { "Zoom", "zoom_in", "zoom_out" }, { "Peek", "peek" },
 	} },
 	{ id = "other", label = "Other", rows = {
 		{ "Undo, redo", "undo", "redo" }, { "Next level", "confirm" }, { "Rules", "rules" },

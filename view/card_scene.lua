@@ -16,7 +16,7 @@ local SWAY, SWAY_RATE = math.rad(22), 0.45
 local FOV = 0.5
 local FILL = 1.3
 -- Cubes are partly see-through so the walls, the subject of every card, stay readable.
-local XRAY = 0.5
+local XRAY = 0.27
 local GROW_RATE = 9
 
 function M.new(pool)

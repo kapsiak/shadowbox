@@ -9,12 +9,14 @@ out vec4 out_fragColor;
 uniform mediump sampler2D digits;
 // Per cell, in 255ths: r the wanted count (count walls), g the cubes on the ray.
 uniform mediump sampler2D counts;
-// Per cell (one texel each): r target, g judged coverage, b wrong (cast but not as wanted), a contact.
+// Per cell (one texel each): b wrong (cast but not as wanted), a contact.
 uniform mediump sampler2D cells;
 // The same texture, filtered, for soft contact shadows.
 uniform mediump sampler2D soft;
-// Per cell, r: how strongly the selected piece casts onto it (outlined in `accent`).
-uniform mediump sampler2D focus;
+// Per cell, what neighbouring cells merge by: r target, g judged coverage, b how strongly the
+// selected piece casts onto it (outlined in `accent`), a the wanted light's id (255ths; 0 for
+// darkness), so regions wanting different light stay apart.
+uniform mediump sampler2D shape;
 // Per cell, the light received and wanted: rgb a glass colour when a = 1, darkness when a = 0.
 uniform mediump sampler2D received;
 uniform mediump sampler2D target;
@@ -37,9 +39,6 @@ uniform fs_uniforms
     mediump vec4 frame;
 };
 
-const vec2 SIDES[4] = vec2[4](vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, -1.0), vec2(0.0, 1.0));
-const vec2 CORNERS[4] = vec2[4](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0));
-
 float roundedBox(vec2 p, vec2 half_size, float radius)
 {
     vec2 q = abs(p) - half_size + radius;
@@ -51,39 +50,32 @@ bool inGrid(vec2 c)
     return all(greaterThanEqual(c, vec2(0.0))) && all(lessThan(c, dims.xy));
 }
 
-vec4 cellAt(vec2 c)
+vec4 shapeAt(vec2 c)
 {
-    return inGrid(c) ? texture(cells, (c + 0.5) / dims.zw) : vec4(0.0);
+    return inGrid(c) ? texture(shape, (c + 0.5) / dims.zw) : vec4(0.0);
 }
 
-// The light a cell wants, as a key that differs between any two wanted lights.
-vec3 wantAt(vec2 c)
-{
-    vec4 w = inGrid(c) ? texture(target, (c + 0.5) / dims.zw) : vec4(0.0);
-    return w.a > 0.5 ? w.rgb : vec3(-1.0);
-}
-
-float focusAt(vec2 c)
-{
-    return inGrid(c) ? texture(focus, (c + 0.5) / dims.zw).r : 0.0;
-}
-
-// Distance from p (cell-local, centred) to the edge of a region of cells, counting each side and
-// corner by how far its neighbour lies outside it (0 to 1), so neighbouring cells merge seamlessly
-// and smoothly as they come and go. Capped at 1, beyond any point in the cell.
-float edgeDistance(vec2 p, vec4 side_out, vec4 corner_out)
+// Distance from a point to the edge of a region of cells, counting the nearer side along x and
+// along y and the corner between them by how far that neighbour lies outside the region (0 to
+// 1), so neighbouring cells merge seamlessly and smoothly as they come and go. `a` is the
+// point's distance from the cell centre on each axis. The far sides and corners lie at least
+// half a cell away, beyond every threshold this is compared with, so they are not read. Capped
+// at 1.
+float edgeDistance(vec2 a, vec3 out_xyc)
 {
     float d = 1.0;
-    d = min(d, mix(1.0, p.x + 0.5, side_out.x));
-    d = min(d, mix(1.0, 0.5 - p.x, side_out.y));
-    d = min(d, mix(1.0, p.y + 0.5, side_out.z));
-    d = min(d, mix(1.0, 0.5 - p.y, side_out.w));
-    for (int i = 0; i < 4; i++)
-    {
-        float out_i = i == 0 ? corner_out.x : i == 1 ? corner_out.y : i == 2 ? corner_out.z : corner_out.w;
-        d = min(d, mix(1.0, length(p - CORNERS[i] * 0.5), out_i));
-    }
+    d = min(d, mix(1.0, 0.5 - a.x, out_xyc.x));
+    d = min(d, mix(1.0, 0.5 - a.y, out_xyc.y));
+    d = min(d, mix(1.0, length(a - 0.5), out_xyc.z));
     return d;
+}
+
+// How far neighbour n lies outside each region of a cell `own`: target (split where the wanted
+// light changes), coverage and focus.
+vec3 outside(vec4 n, vec4 own)
+{
+    float differs = step(0.5 / 255.0, abs(n.a - own.a));
+    return vec3(max(step(n.r, 0.5), differs), 1.0 - n.g, step(n.b, 0.5));
 }
 
 // Coverage of digit d drawn in a box of `size` cells centred at p (cell-local); aa is the
@@ -128,27 +120,17 @@ void main()
 
     float aa = max(0.01, length(fwidth(grid)));
     bool inside = inGrid(cell);
-    vec4 s = cellAt(cell);
-
-    // Neighbour membership of the target (r, split where the wanted light changes), coverage (g)
-    // and focus regions.
-    vec3 want_key = wantAt(cell);
-    vec4 t_side, g_side, f_side, t_corner, g_corner, f_corner;
-    for (int i = 0; i < 4; i++)
-    {
-        vec4 n = cellAt(cell + SIDES[i]);
-        vec4 c = cellAt(cell + CORNERS[i]);
-        float side_differs = step(0.05, distance(wantAt(cell + SIDES[i]), want_key));
-        float corner_differs = step(0.05, distance(wantAt(cell + CORNERS[i]), want_key));
-        t_side[i] = max(step(n.r, 0.5), side_differs);
-        g_side[i] = 1.0 - n.g;
-        f_side[i] = step(focusAt(cell + SIDES[i]), 0.5);
-        t_corner[i] = max(step(c.r, 0.5), corner_differs);
-        g_corner[i] = 1.0 - c.g;
-        f_corner[i] = step(focusAt(cell + CORNERS[i]), 0.5);
-    }
-
     vec2 cell_uv = (cell + 0.5) / dims.zw;
+    vec4 own = inside ? texture(shape, cell_uv) : vec4(0.0);
+    vec4 s = inside ? texture(cells, cell_uv) : vec4(0.0);
+
+    // Only the neighbours toward the pixel's quadrant can reach it: the side along x, the side
+    // along y and the corner between them.
+    vec2 toward = vec2(local.x < 0.0 ? -1.0 : 1.0, local.y < 0.0 ? -1.0 : 1.0);
+    vec3 out_x = outside(shapeAt(cell + vec2(toward.x, 0.0)), own);
+    vec3 out_y = outside(shapeAt(cell + vec2(0.0, toward.y)), own);
+    vec3 out_c = outside(shapeAt(cell + toward), own);
+    vec2 a = abs(local);
     vec4 received_t = inside ? texture(received, cell_uv) : vec4(0.0);
     vec4 want_t = inside ? texture(target, cell_uv) : vec4(0.0);
     vec3 received_color = mix(shadow.rgb, surface.rgb * received_t.rgb, received_t.a);
@@ -165,12 +147,12 @@ void main()
     color *= 1.0 - 0.12 * texture(soft, grid / dims.zw).a;
 
     // Missing target cells keep a faint wash of the wanted light.
-    float in_target = s.r * step(0.5, s.r);
-    color = mix(color, mix(line.rgb, want_color, want_t.a), 0.07 * in_target * (1.0 - s.g));
+    float in_target = own.r * step(0.5, own.r);
+    color = mix(color, mix(line.rgb, want_color, want_t.a), 0.07 * in_target * (1.0 - own.g));
 
     // Coverage: grows from each cell's centre; merged with covered neighbours.
-    float g_edge = edgeDistance(local, g_side, g_corner);
-    float covered = inside ? smoothstep(-aa, aa, g_edge - 0.5 * (1.0 - s.g)) * smoothstep(0.0, 0.2, s.g) : 0.0;
+    float g_edge = edgeDistance(a, vec3(out_x.y, out_y.y, out_c.y));
+    float covered = inside ? smoothstep(-aa, aa, g_edge - 0.5 * (1.0 - own.g)) * smoothstep(0.0, 0.2, own.g) : 0.0;
     color = mix(color, received_color, covered);
 
     // Wrong coverage is crossed out with surface-coloured hatching.
@@ -180,12 +162,12 @@ void main()
 
     // Target contour: a line inside the region's edge, swallowed by a matching shadow,
     // turning to ink as the wall is satisfied.
-    float t_edge = edgeDistance(local, t_side, t_corner);
+    float t_edge = edgeDistance(a, vec3(out_x.x, out_y.x, out_c.x));
     float line_width = 0.045 + 0.02 * opacity.z;
     float contour = inside ? in_target * (1.0 - smoothstep(line_width, line_width + aa, t_edge)) : 0.0;
     vec3 ink = mix(line.rgb, line.rgb * 0.45, opacity.z);
     vec3 line_color = mix(ink, want_color * 0.8, want_t.a);
-    color = mix(color, line_color, contour * (1.0 - 0.85 * s.g * matches * (1.0 - s.b)));
+    color = mix(color, line_color, contour * (1.0 - 0.85 * own.g * matches * (1.0 - s.b)));
 
     vec2 n = inside ? floor(texture(counts, cell_uv).rg * 255.0 + 0.5) : vec2(0.0);
     // Count walls: the wanted count, in ink on the surface and in the surface's colour on a shadow.
@@ -200,8 +182,8 @@ void main()
     color = mix(color, line.rgb, 0.6 * ring * cancelled);
 
     // The selected piece's cast: a tint and an outline in its colour.
-    float f_own = inside ? focusAt(cell) : 0.0;
-    float f_edge = edgeDistance(local, f_side, f_corner);
+    float f_own = own.b;
+    float f_edge = edgeDistance(a, vec3(out_x.z, out_y.z, out_c.z));
     float f_line = f_own * (1.0 - smoothstep(0.06, 0.06 + aa, f_edge));
     color = mix(color, mix(color, accent.rgb, 0.3), f_own * step(0.5, f_own));
     color = mix(color, accent.rgb * 0.85, f_line);

@@ -1,26 +1,35 @@
--- View and projection matrices for each render pass ("board", "tray", "card"). Written once per frame
--- by main.script and read by the render script and picking, so drawing and picking always
--- agree with the camera that was just placed.
+-- View and projection matrices for each render pass ("board", "tray", "card", "thumbs"). Written
+-- by the screens in the present phase and read by the render script and picking, so drawing and
+-- picking always agree with the camera that was just placed.
 local hot = require "core.hot"
 local M = {}
 
 local passes = {}
 
--- Places a perspective camera at `position` with `rotation`, looking down its local -z.
-function M.set(name, position, rotation, fov, aspect, near, far)
+-- A perspective camera at `position` with `rotation`, looking down its local -z.
+local function lens(position, rotation, fov, aspect, near, far)
 	local view = vmath.inv(vmath.matrix4_compose(position, rotation, vmath.vector3(1, 1, 1)))
 	local proj = vmath.matrix4_perspective(fov, aspect, near, far)
-	passes[name] = { view = view, proj = proj, frustum = proj * view, inverse = vmath.inv(proj * view) }
+	local frustum = proj * view
+	return { view = view, proj = proj, frustum = frustum, inverse = vmath.inv(frustum), options = { frustum = frustum } }
 end
 
--- A narrow perspective camera under which the z = 0 plane maps exactly onto a w x h screen,
--- one world unit per pixel, so 3D objects can sit at screen positions. Returns the camera
--- position, from which objects can find their eye direction.
-function M.setScreen(name, w, h, fov)
-	local distance = h / 2 / math.tan(fov / 2)
-	local position = vmath.vector3(w / 2, h / 2, distance)
-	M.set(name, position, vmath.quat(), fov, w / h, distance * 0.5, distance * 1.5)
-	return position
+function M.set(name, position, rotation, fov, aspect, near, far)
+	passes[name] = lens(position, rotation, fov, aspect, near, far)
+end
+
+-- One view of a snapshot pass: a camera (as M.set) drawing into a rectangle of the target
+-- (pixels, origin bottom left).
+function M.shot(position, rotation, fov, aspect, near, far, x, y, w, h)
+	local shot = lens(position, rotation, fov, aspect, near, far)
+	shot.viewport = { x = x, y = y, w = w, h = h }
+	return shot
+end
+
+-- A pass drawn into the render target resource named `target` (render/game.render) rather than
+-- the screen: each shot into its own viewport, after emptying the target when `clear`.
+function M.setShots(name, target, clear, shots)
+	passes[name] = { target = target, clear = clear, shots = shots }
 end
 
 -- Draws the pass into a window rectangle (pixels, origin bottom left) instead of the whole frame.

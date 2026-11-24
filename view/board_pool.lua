@@ -22,7 +22,7 @@ local function freeSlot(pool)
 			return slot
 		end
 	end
-	local anchor = factory.create(pool.factories.anchor)
+	local anchor = msg.url(nil, factory.create(pool.factories.anchor), nil)
 	local slot = { anchor = anchor, buffers = {}, board = board_view.create(pool.factories, anchor) }
 	pool.slots[#pool.slots + 1] = slot
 	return slot

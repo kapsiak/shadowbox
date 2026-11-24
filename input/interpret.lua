@@ -13,6 +13,7 @@
 --                                 while dragging, a second finger's swipe turns a step per
 --                                 `swipe_step` pixels: sideways about vertical, up or down tips
 --   nudge { along, delta }        along = "vertical" | "drag" (the drag plane's axis)
+--   peek { on }                   while held, pieces fade so the walls show
 --   undo, redo, remove, menu, next
 local hot = require "core.hot"
 local M = {}
@@ -57,7 +58,10 @@ local buttons = {
 	lower = { kind = "nudge", along = "vertical", delta = -1 },
 	stow = { kind = "remove" },
 	next = { kind = "next" },
+	peek = { kind = "peek", on = true },
 }
+-- Buttons held for their effect, and the intents their release stands for.
+local releases = { peek = { kind = "peek", on = false } }
 
 -- screen_height normalizes drag distances so sensitivity is resolution independent.
 -- sensitivity scales camera drags; invert flips their direction. A touch drag aims `lift`
@@ -68,7 +72,9 @@ end
 
 local function onKey(g, out)
 	local name = g.name
-	if g.pressed and key_views[name] then
+	if name == "peek" and (g.pressed or g.released) then
+		out[#out + 1] = { kind = "peek", on = g.pressed }
+	elseif g.pressed and key_views[name] then
 		out[#out + 1] = { kind = "view", name = key_views[name] }
 	elseif not g.released and key_orbits[name] then
 		local o = key_orbits[name]
@@ -95,8 +101,9 @@ local function onDragStart(state, g, pick, out)
 	end
 end
 
-function M.button(id, out)
-	local intent = buttons[id]
+-- phase: "press" or "release" (router control events).
+function M.button(id, phase, out)
+	local intent = (phase == "press" and buttons or phase == "release" and releases or {})[id]
 	if intent then
 		local copy = {}
 		for k, v in pairs(intent) do

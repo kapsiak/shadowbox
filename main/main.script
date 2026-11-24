@@ -19,6 +19,7 @@ local menu_screen = require "main.menu_screen"
 local play_screen = require "main.play_screen"
 local select_screen = require "main.select_screen"
 local board_pool = require "view.board_pool"
+local thumbs = require "view.thumbs"
 local progress = require "game.progress"
 local settings = require "game.settings"
 local save_data = require "game.save_data"
@@ -88,20 +89,23 @@ end
 
 local can_fullscreen = defos ~= nil and canFullscreen()
 
+-- The screen as the active screen sees it: one table, updated in place each frame. The safe
+-- area and display scale are read again only when the window size changes.
 local function screenInfo(self)
+	local info = self.info
 	local w, h = window.get_size()
-	local area = window.get_safe_area()
-	return {
-		w = math.max(w, 1), h = math.max(h, 1), scale = window.get_display_scale() * self.settings.ui_scale,
-		can_fullscreen = can_fullscreen,
-		has_keyboard = not mobile,
-		safe = { left = area.inset_left, right = area.inset_right, top = area.inset_top, bottom = area.inset_bottom },
-		settings = self.settings,
-		title = sys.get_config_string("project.title", ""),
-		version = sys.get_config_string("project.version", ""),
-		can_continue = self.last ~= nil,
-		seen = self.saved.seen,
-	}
+	w, h = math.max(w, 1), math.max(h, 1)
+	if w ~= info.w or h ~= info.h then
+		local area = window.get_safe_area()
+		local safe = info.safe
+		info.w, info.h, info.display_scale = w, h, window.get_display_scale()
+		safe.left, safe.right, safe.top, safe.bottom = area.inset_left, area.inset_right, area.inset_top, area.inset_bottom
+	end
+	info.scale = info.display_scale * self.settings.ui_scale
+	info.settings = self.settings
+	info.can_continue = self.last ~= nil
+	info.seen = self.saved.seen
+	return info
 end
 
 local function switchTo(self, screen)
@@ -152,10 +156,10 @@ local function changeScreen(self, request)
 		if p then
 			openLevel(self, p, l)
 		else
-			switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool, self.last))
+			switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool, self.last, self.thumb_atlas))
 		end
 	elseif to == "select" then
-		switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool, self.last))
+		switchTo(self, select_screen.enter(self.catalog, self.saved, self.boards, self.pool, self.last, self.thumb_atlas))
 	end
 end
 
@@ -165,7 +169,7 @@ local function applyDisplay(self)
 	self.keymap = controls.keymap(controls.changed(prefs.bindings))
 	sys.set_vsync_swap_interval(prefs.frame_rate == 0 and 1 or 0)
 	sys.set_update_frequency(prefs.frame_rate)
-	frame.scale = settings.renderScale(prefs.quality)
+	frame.scale = settings.renderScale(prefs.quality, window.get_display_scale())
 	if can_fullscreen and defos.is_fullscreen() ~= prefs.fullscreen then
 		defos.set_fullscreen(prefs.fullscreen)
 	end
@@ -190,7 +194,13 @@ local function handle(self, request)
 	end
 end
 
+local none = {}
+
+-- The intents of this frame's input; a frame without input allocates nothing.
 local function gather(self, info)
+	if #self.raw_input == 0 then
+		return none
+	end
 	local screen = self.screen
 	local module = screen.module
 	self.gestures.threshold = DRAG_THRESHOLD * math.min(info.w, info.h)
@@ -263,9 +273,17 @@ function init(self)
 		glass_piece = msg.url("#glass_piece_factory"), glass_tray_piece = msg.url("#glass_tray_piece_factory"),
 	}
 	self.pool = board_pool.new(self.factories)
-	self.catalog = assert(catalog_loader.load())
+	self.thumb_atlas = thumbs.createAtlas()
+	go.set("/select#select", "textures", self.thumb_atlas, { key = "thumbs" })
+	self.info = {
+		w = 0, h = 0, display_scale = 1, safe = {},
+		can_fullscreen = can_fullscreen, has_keyboard = not mobile,
+		title = sys.get_config_string("project.title", ""),
+		version = sys.get_config_string("project.version", ""),
+	}
+	self.catalog = assert(catalog_loader.load(sys.get_config_string("project.levels", catalog_loader.INDEX)))
 	self.showcase = assert(catalog_loader.loadShowcase())
-	self.rules = assert(catalog_loader.loadRules())
+	self.rules = assert(catalog_loader.loadRules(self.catalog))
 	local data = save_data.decode(storage.load(), self.catalog)
 	self.saved = data.progress
 	self.settings = data.settings
@@ -275,10 +293,12 @@ function init(self)
 	window.set_listener(function(self, event)
 		if event == window.WINDOW_EVENT_FOCUS_LOST or event == window.WINDOW_EVENT_ICONIFIED then
 			flush(self)
-		elseif event == window.WINDOW_EVENT_RESIZED and can_fullscreen
-			and defos.is_fullscreen() ~= self.settings.fullscreen then
-			self.settings = settings.with(self.settings, "fullscreen", defos.is_fullscreen())
-			markDirty(self)
+		elseif event == window.WINDOW_EVENT_RESIZED then
+			if can_fullscreen and defos.is_fullscreen() ~= self.settings.fullscreen then
+				self.settings = settings.with(self.settings, "fullscreen", defos.is_fullscreen())
+				markDirty(self)
+			end
+			frame.scale = settings.renderScale(self.settings.quality, window.get_display_scale())
 		end
 	end)
 	if html5 then
@@ -322,7 +342,10 @@ function update(self, dt)
 	if self.fade then
 		cameras.clear("card")
 	end
-	go.set("/background#mesh", "aspect", vmath.vector4(info.w / info.h, 0, 0, 0))
+	if info.w / info.h ~= self.aspect then
+		self.aspect = info.w / info.h
+		go.set("/background#mesh", "aspect", vmath.vector4(self.aspect, 0, 0, 0))
+	end
 	audio.flush(self.settings)
 end
 

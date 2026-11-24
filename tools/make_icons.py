@@ -289,6 +289,18 @@ def save_ico(img, path):
     path.write_bytes(directory + b"".join(data for _, data in entries))
 
 
+def peek():
+    """An open eye: hold to see the walls through the pieces."""
+    img, d = canvas()
+    half, sag = 32, 17
+    r = (half * half + sag * sag) / (2 * sag)
+    spread = math.degrees(math.asin(half / r))
+    arc(d, 48, 48 + r - sag, r, -90 - spread, -90 + spread)
+    arc(d, 48, 48 - r + sag, r, 90 - spread, 90 + spread)
+    d.ellipse((s(38), s(38), s(58), s(58)), fill=WHITE)
+    save(img, "peek")
+
+
 def rules():
     """A question mark in the interface face, for the Rules list."""
     from PIL import ImageFont
@@ -319,6 +331,7 @@ def main():
     straight_arrow("lower", "down")
     stow()
     rules()
+    peek()
     next_arrow()
     back_arrow()
     chevron("page_next")

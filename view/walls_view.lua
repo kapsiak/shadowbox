@@ -45,10 +45,11 @@ end
 
 
 -- Texture slots follow the sampler order in panel.material: slot 0 is the static digit strip
--- (panel.mesh) and `cells` is bound twice (sharp, soft). `counts` holds numbers, so it snaps.
-local LAYERS = { "cells", "focus", "received", "target", "counts" }
-local SNAP = { counts = true }
-local slots = { { "texture1", "counts" }, { "texture2", "cells" }, { "texture3", "cells" }, { "texture4", "focus" }, { "texture5", "received" }, { "texture6", "target" } }
+-- (panel.mesh) and `cells` is bound twice (sharp, soft). Channels holding numbers or ids snap
+-- rather than ease: all of `counts`, and the wanted-light id in `shape`.
+local LAYERS = { "cells", "shape", "received", "target", "counts" }
+local SNAP = { counts = { true, true, true, true }, shape = { false, false, false, true } }
+local slots = { { "texture1", "counts" }, { "texture2", "cells" }, { "texture3", "cells" }, { "texture4", "shape" }, { "texture5", "received" }, { "texture6", "target" } }
 local OPERATOR_IDS = { light = 0, count = 1, parity = 2 }
 
 -- The wall objects under `parent`, hidden until bound to a level.
@@ -96,6 +97,7 @@ local function bindWall(wall, level, blank)
 	go.set(wall.mesh, "margins", vmath.vector4(m[1], m[2], m[3], m[4]))
 	wall.w, wall.h = w, h
 	wall.side, wall.goal_side, wall.opacity, wall.pulse, wall.matched, wall.glow = -1, -1, 1, 0, false, 0
+	wall.fx = vmath.vector4(-1, 0, 0, 0)
 end
 
 -- Shows `level`'s walls, cleared: cells grow in from nothing.
@@ -132,13 +134,13 @@ local function put(layer, i, v)
 	end
 end
 
--- Marks the cells the focused piece casts onto, in the red channel of each wall's focus goal.
+-- Marks the cells the focused piece casts onto, in the blue channel of each wall's shape goal.
 local function focusGoals(walls, cells)
 	for name, wall in pairs(walls.list) do
 		local cast = cells and projection.cover(walls.level.size, cells, name)
-		local focus = wall.layers.focus
+		local shape_layer = wall.layers.shape
 		for i = 1, wall.w * wall.h do
-			put(focus, (i - 1) * 4 + 1, cast and cast[i] and 1 or 0)
+			put(shape_layer, (i - 1) * 4 + 3, cast and cast[i] and 1 or 0)
 		end
 	end
 end
@@ -187,10 +189,20 @@ local function seenLight(operator, v)
 	return casts[operator](v) and 0 or WHITE
 end
 
--- cells, per texel: target, judged coverage, wrong (cast but not as wanted), contact, in [0, 1];
--- received and target: the colour of the light received and wanted (see lightGoal);
--- counts: the wanted count (count walls) and the cubes on the ray (count and parity walls), in
--- 255ths. `contact` is given for the floor, `cubes` for walls that count.
+-- The id of a wanted light, so the shader can tell neighbouring regions apart: the glass light
+-- itself, or 0 for darkness. White (nothing wanted) keeps the id, as lightGoal keeps the colour.
+local function wantId(layer, i, light)
+	if light and light ~= WHITE then
+		put(layer, (i - 1) * 4 + 4, (theme.glass[light] and light or 0) / 255)
+	end
+end
+
+-- Per texel: shape holds what neighbouring cells merge by (read once per neighbour): target,
+-- judged coverage, focus (see focusGoals), in [0, 1], and the wanted-light id in 255ths;
+-- cells: wrong (cast but not as wanted) and contact, in b and a; received and target: the
+-- colour of the light received and wanted (see lightGoal); counts: the wanted count (count
+-- walls) and the cubes on the ray (count and parity walls), in 255ths. `contact` is given for
+-- the floor, `cubes` for walls that count.
 local function cellGoals(wall, target, comparison, contact, cubes)
 	local layers, op = wall.layers, wall.operator
 	local wanted = target and target.layers[op]
@@ -199,14 +211,16 @@ local function cellGoals(wall, target, comparison, contact, cubes)
 	for i = 1, wall.w * wall.h do
 		local base = (i - 1) * 4
 		local want_cast, cur_cast = wanted and cast(wanted[i]), current and cast(current[i])
-		put(layers.cells, base + 1, want_cast and 1 or 0)
-		put(layers.cells, base + 2, cur_cast and 1 or 0)
+		put(layers.shape, base + 1, want_cast and 1 or 0)
+		put(layers.shape, base + 2, cur_cast and 1 or 0)
 		put(layers.cells, base + 3, cur_cast and (op == "count" and current[i] ~= wanted[i] or not want_cast) and 1 or 0)
 		put(layers.cells, base + 4, contact and contact[i] and 1 or 0)
 		put(layers.counts, base + 1, op == "count" and wanted and wanted[i] / 255 or 0)
 		put(layers.counts, base + 2, cubes and cubes[i] / 255 or 0)
 		lightGoal(layers.received, i, seenLight(op, current and current[i]))
-		lightGoal(layers.target, i, seenLight(op, wanted and wanted[i]))
+		local want = seenLight(op, wanted and wanted[i])
+		lightGoal(layers.target, i, want)
+		wantId(layers.shape, i, want)
 	end
 end
 
@@ -277,7 +291,7 @@ local function stepSide(wall, eye, k)
 			wall.goal_side = 1
 		end
 	end
-	wall.opacity = motion.approach(wall.opacity, wall.goal_side == wall.side and 1 or 0, k)
+	wall.opacity = motion.ease(wall.opacity, wall.goal_side == wall.side and 1 or 0, k)
 	if wall.goal_side ~= wall.side and wall.opacity < 0.02 then
 		wall.side = wall.goal_side
 		go.set(wall.mesh, "vertices", wall.buffers[wall.side])
@@ -289,12 +303,13 @@ local function easeLayer(layer, w, h, step)
 	if not layer.moving then
 		return
 	end
-	step = layer.snap and 1 or step
+	local snap = layer.snap
 	local now, goal, stream, moving = layer.now, layer.goal, layer.stream, false
 	for i = 1, #now do
 		local v, g = now[i], goal[i]
 		if v ~= g then
-			v = v < g and math.min(g, v + step) or math.max(g, v - step)
+			local s = snap and snap[(i - 1) % 4 + 1] and 1 or step
+			v = v < g and math.min(g, v + s) or math.max(g, v - s)
 			now[i], stream[i] = v, math.floor(v * 255 + 0.5)
 			moving = true
 		end
@@ -311,6 +326,25 @@ local function stepCells(wall, step)
 	end
 end
 
+local function showFx(wall)
+	local fx = wall.fx
+	if fx.x ~= wall.opacity or fx.y ~= wall.pulse or fx.z ~= wall.glow then
+		fx.x, fx.y, fx.z = wall.opacity, wall.pulse, wall.glow
+		go.set(wall.mesh, "opacity", fx)
+	end
+end
+
+-- Ends every fade, ease and pulse at once, as seen from `eye`, for a still picture.
+function M.finish(walls, eye)
+	for _, wall in pairs(walls.list) do
+		stepSide(wall, eye, 1)
+		stepSide(wall, eye, 1)
+		stepCells(wall, 1)
+		wall.pulse, wall.glow = 0, wall.matched and 1 or 0
+		showFx(wall)
+	end
+end
+
 -- Advances fades, cell easing and pulses. eye: unit vector3 from the board toward the camera.
 function M.step(walls, dt, eye)
 	local k_fade = motion.blend(FADE_RATE, dt)
@@ -318,8 +352,8 @@ function M.step(walls, dt, eye)
 		stepSide(wall, eye, k_fade)
 		stepCells(wall, CELL_SPEED * dt)
 		wall.pulse = math.max(0, wall.pulse - PULSE_RATE * dt)
-		wall.glow = motion.approach(wall.glow, wall.matched and 1 or 0, k_fade)
-		go.set(wall.mesh, "opacity", vmath.vector4(wall.opacity, wall.pulse, wall.glow, 0))
+		wall.glow = motion.ease(wall.glow, wall.matched and 1 or 0, k_fade)
+		showFx(wall)
 	end
 end
 

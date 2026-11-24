@@ -38,6 +38,9 @@ images {
   image: "/ui/icons/page_prev.png"
 }
 images {
+  image: "/ui/icons/peek.png"
+}
+images {
   image: "/ui/icons/redo.png"
 }
 images {

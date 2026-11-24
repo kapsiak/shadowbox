@@ -3,6 +3,7 @@
 -- orthographic look by narrowing the field of view while backing away (a dolly zoom),
 -- so framing is preserved and the camera stays an ordinary perspective camera.
 local hot = require "core.hot"
+local motion = require "view.motion"
 local M = {}
 
 local PITCH_MIN, PITCH_MAX = math.rad(-89.5), math.rad(5)
@@ -57,12 +58,18 @@ function M.snapTo(rig, name)
 	rig.goal.ortho = v.ortho
 end
 
+local FIELDS = { "yaw", "pitch", "zoom", "ortho" }
+
+-- Eases the camera toward its goal. Returns whether it moved.
 function M.step(rig, dt)
-	local k = 1 - math.exp(-EASE_RATE * dt)
-	local c, g = rig.current, rig.goal
-	for _, field in ipairs({ "yaw", "pitch", "zoom", "ortho" }) do
-		c[field] = c[field] + (g[field] - c[field]) * k
+	local k = motion.blend(EASE_RATE, dt)
+	local c, g, moved = rig.current, rig.goal, false
+	for _, field in ipairs(FIELDS) do
+		local v = motion.ease(c[field], g[field], k, 1e-5)
+		moved = moved or v ~= c[field]
+		c[field] = v
 	end
+	return moved
 end
 
 function M.rotation(rig)
@@ -93,9 +100,11 @@ function M.lens(rig, aspect, insets)
 	return position, rotation, fov, math.max(0.05, distance - 4 * rig.radius), distance + 4 * rig.radius
 end
 
--- How see-through cubes should be (0 opaque .. 1 fully x-rayed), following the ortho blend.
+-- How see-through cubes should be (0 opaque .. 1 a ghost), following the ortho blend.
+local ORTHO_XRAY = 0.55
+
 function M.xray(rig)
-	return rig.current.ortho
+	return rig.current.ortho * ORTHO_XRAY
 end
 
 return hot(..., M)

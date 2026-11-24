@@ -1,7 +1,11 @@
 -- Draws the sheet layout published in ui/models ("panel"): an optional dimmed backdrop and
 -- card, a title, a heading, and buttons, toggles and sliders. Also draws the screen-wide fade
--- ("fade", a number in [0, 1]) used for transitions, on top of everything.
+-- ("fade", a number in [0, 1]) used for transitions, on top of everything. Draws only when the
+-- layout (the same table while unchanged), the fade or an easing item changes; once hidden its
+-- nodes are disabled.
 local models = require "ui.models"
+local motion = require "view.motion"
+local memo = require "core.memo"
 
 local theme = require "view.theme"
 
@@ -140,7 +144,8 @@ local function drawSegments(item, spec, a)
 			selected = i
 		end
 	end
-	item.selected = (item.selected or selected) + (selected - (item.selected or selected)) * 0.35
+	item.selected = motion.ease(item.selected or selected, selected, 0.35, 1e-3)
+	item.moving = item.moving or item.selected ~= selected
 	local cx = spec.track_x + spec.track_w / 2
 	placeBar(item.track, cx, spec.y, spec.track_w, th, withAlpha(TRACK, a))
 	local sx = spec.track_x + seg_w * (item.selected - 0.5)
@@ -178,7 +183,8 @@ local function drawControl(item, spec, a)
 	elseif spec.kind == "toggle" then
 		local tw, th = h * 0.95, h * 0.52
 		local tx = spec.x + spec.w / 2 - h * 0.3 - tw / 2
-		item.on = (item.on or 0) + ((spec.value and 1 or 0) - (item.on or 0)) * 0.35
+		item.on = motion.ease(item.on or 0, spec.value and 1 or 0, 0.35, 1e-3)
+		item.moving = item.moving or item.on ~= (spec.value and 1 or 0)
 		placeBar(item.track, tx, spec.y, tw, th, withAlpha(TRACK + (ACCENT - TRACK) * item.on, a))
 		local size = th * 0.72
 		drawKnob(item, tx - tw / 2 + th / 2 + item.on * (tw - th), spec.y + size * LIFT / 2, size, size, a)
@@ -199,7 +205,8 @@ local function drawItem(item, spec, a)
 	local control = controls[spec.kind] and spec.kind or nil
 	item.segment_count = spec.segments and #spec.segments or 0
 	enableItem(item, true, control)
-	item.scale = item.scale + (1 - item.scale) * 0.25
+	item.scale = motion.ease(item.scale, 1, 0.25, 1e-3)
+	item.moving = item.scale ~= 1
 	local pressed = (1 - item.scale) / (1 - PRESS)
 	local w, h = spec.w, spec.h
 	local face = spec.primary and PRIMARY or FACE
@@ -232,10 +239,14 @@ function init(self)
 	self.items = {}
 	self.shown = 0
 	self.fade = box()
+	self.drawn, self.drawn_fade = {}, {}
 end
 
 local function drawFrame(self, layout, a, w, h)
-	place(self.dim, w / 2, h / 2, w, h, withAlpha(DIM, a * (layout.modal and 1 or 0)))
+	gui.set_enabled(self.dim, layout.modal == true)
+	if layout.modal then
+		place(self.dim, w / 2, h / 2, w, h, withAlpha(DIM, a))
+	end
 	local card = layout.card
 	gui.set_enabled(self.card, card ~= nil)
 	gui.set_enabled(self.card_shadow, card ~= nil)
@@ -271,31 +282,59 @@ local function drawFrame(self, layout, a, w, h)
 	end
 end
 
+local function hideFrame(self)
+	for _, node in ipairs({ self.dim, self.card_shadow, self.card, self.title, self.paragraph, self.heading, self.note, self.mark, self.mark_accent }) do
+		gui.set_enabled(node, false)
+	end
+end
+
+local function contains(list, value)
+	for _, v in ipairs(list) do
+		if v == value then
+			return true
+		end
+	end
+	return false
+end
+
+local function drawSheet(self, presses, w, h)
+	local specs = self.last.items
+	local moving = false
+	for i, spec in ipairs(specs) do
+		local item = slotFor(self, i, spec.id)
+		if contains(presses, spec.id) then
+			item.scale = PRESS
+		end
+		drawItem(item, spec, self.shown)
+		moving = moving or item.moving
+	end
+	for i = #specs + 1, #self.items do
+		enableItem(self.items[i], false)
+	end
+	if self.shown > 0 then
+		drawFrame(self, self.last, self.shown, w, h)
+	else
+		hideFrame(self)
+		for _, item in ipairs(self.items) do
+			enableItem(item, false)
+		end
+	end
+	return moving
+end
+
 function update(self, dt)
 	local w, h = window.get_size()
 	local layout = models.layout("panel")
 	local fade = models.layout("fade") or 0
 	local k = 1 - math.exp(-EASE_RATE * dt)
-	self.shown = (fade > 0.95 and not layout) and 0 or self.shown + ((layout and 1 or 0) - self.shown) * k
+	self.shown = (fade > 0.95 and not layout) and 0 or motion.ease(self.shown, layout and 1 or 0, k, 1e-3)
 	self.last = layout or self.last
-	local pressed = {}
-	for _, id in ipairs(models.takePresses("panel")) do
-		pressed[id] = true
+	local presses = models.takePresses("panel")
+	if self.last and (self.moving or #presses > 0 or memo.changed(self.drawn, self.last, self.shown, w, h)) then
+		self.moving = drawSheet(self, presses, w, h)
 	end
-	local specs = self.last and self.last.items or {}
-	if self.last then
-		drawFrame(self, self.last, self.shown, w, h)
+	if memo.changed(self.drawn_fade, fade, w, h) then
+		place(self.fade, w / 2, h / 2, w, h, withAlpha(FADE, fade))
+		gui.set_enabled(self.fade, fade > 0.001)
 	end
-	for i, spec in ipairs(specs) do
-		local item = slotFor(self, i, spec.id)
-		if pressed[spec.id] then
-			item.scale = PRESS
-		end
-		drawItem(item, spec, self.shown)
-	end
-	for i = #specs + 1, #self.items do
-		enableItem(self.items[i], false)
-	end
-	place(self.fade, w / 2, h / 2, w, h, withAlpha(FADE, fade))
-	gui.set_enabled(self.fade, fade > 0.001)
 end

@@ -17,7 +17,7 @@ M.defaults = {
 	colors = "default",
 	ui_scale = 1,
 	fullscreen = false,
-	quality = "high",
+	quality = "balanced",
 	frame_rate = 60,
 	bindings = {},
 }
@@ -80,9 +80,12 @@ function M.range(key)
 	return ranges[key]
 end
 
--- How much of the screen resolution the 3D scene renders at, for a quality choice.
-function M.renderScale(quality)
-	return ({ low = 0.5, balanced = 0.75, high = 1 })[quality] or 1
+-- How much of the screen resolution the 3D scene renders at: a quality choice caps the pixel
+-- density (render pixels per logical pixel; high keeps the display's own). display_scale: the
+-- display's density (window.get_display_scale).
+function M.renderScale(quality, display_scale)
+	local cap = ({ low = 1, balanced = 2 })[quality]
+	return cap and math.min(1, cap / display_scale) or 1
 end
 
 return hot(..., M)

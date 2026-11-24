@@ -1,12 +1,14 @@
--- Draws the level select published in ui/models ("select": { layout, scroll, slide }): the
--- title and a dot per chapter, then one chapter's page with its banner and trail, and under
--- each level a plinth, its label and a badge. Drawn beneath the 3D thumbnails (gui_back
--- material), which sit on the plinths. The header hangs from one root that carries the scroll
--- and the page from another that also carries the sideways slide, so the page is redrawn only
--- when the layout or the fade changes. Nodes are pooled by slot, so their number is bounded by
--- the largest chapter. Shapes, body text and titles sit on their own layers (in that order), so
--- the text batches into a draw per font; the roots are disabled once the page has faded out.
+-- Draws the level select published in ui/models ("select": { layout, scroll, slide, thumbs,
+-- thumb_scale }):
+-- the title and a dot per chapter, then one chapter's page with its banner and trail, and for
+-- each level a plinth, its thumbnail (an image from view/thumbs, growing in once drawn), its
+-- label and a badge. The header hangs from one root that carries the scroll and the page from
+-- another that also carries the sideways slide, so the page is redrawn only when the layout or
+-- the fade changes. Nodes are pooled by slot, so their number is bounded by the largest chapter.
+-- Shapes, thumbnails, body text and titles sit on their own layers (in that order), so each
+-- batches into a draw; the roots are disabled once the page has faded out.
 local models = require "ui.models"
+local motion = require "view.motion"
 
 local theme = require "view.theme"
 
@@ -15,6 +17,7 @@ local SOFT_INK = theme.vec(theme.ui.soft_ink)
 local SHADOW = theme.vec(theme.ui.shadow)
 local SOLVED = theme.vec(theme.ui.solved)
 local LOCKED = theme.vec(theme.ui.cell_off)
+local WHITE = vmath.vector4(1, 1, 1, 1)
 local FONT_SIZE = { title = 64, body = 40 }
 local FADE_RATE = 10
 local PAGE = theme.vec(theme.ui.page)
@@ -96,10 +99,15 @@ local function drawBanner(b, spec, alpha)
 end
 
 -- The current level's halo breathes; its position is set with the rest of the node.
+local halo_size, halo_color = vmath.vector3(), vmath.vector4()
+
 local function pulseHalo(halo, spec, alpha, pulse)
 	local s, grow = spec.size, 1 + 0.08 * pulse
-	gui.set_size(halo, vmath.vector3(s * 1.25 * grow, s * 0.42 * grow, 0))
-	gui.set_color(halo, withAlpha(accentOf(spec.accent), alpha * (0.35 - 0.12 * pulse)))
+	halo_size.x, halo_size.y = s * 1.25 * grow, s * 0.42 * grow
+	gui.set_size(halo, halo_size)
+	local accent = accentOf(spec.accent)
+	halo_color.x, halo_color.y, halo_color.z, halo_color.w = accent.x, accent.y, accent.z, accent.w * alpha * (0.35 - 0.12 * pulse)
+	gui.set_color(halo, halo_color)
 end
 
 local function drawNode(n, spec, alpha)
@@ -137,8 +145,44 @@ local function pooled(pool, count, make)
 	return pool
 end
 
+local function thumbImage()
+	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
+	gui.set_parent(node, root)
+	gui.set_layer(node, "thumbs")
+	gui.set_texture(node, "thumbs")
+	return node
+end
+
 local function newNode()
-	return { halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check") }
+	return { halo = box("dot"), plinth = box("dot"), lock = box("lock"), label = text("body"), check = box("check"), image = thumbImage() }
+end
+
+local IMAGE_RATE = 9
+
+-- A level's thumbnail grows in once its image is drawn (at once when calm). Placed relative to
+-- the page root, which carries the scroll and slide; redrawn only while it changes.
+-- node: the slot's image node; state: what it last showed { spec, name, shown, drawn, alpha }.
+local function drawImage(self, node, state, spec, images, alpha, k, calm)
+	local name = images and images[spec.id]
+	if spec ~= state.spec then
+		state.spec, state.shown, state.drawn = spec, 0, nil
+	end
+	if name and name ~= state.name then
+		gui.play_flipbook(node, name)
+		state.name = name
+	end
+	local goal = name and 1 or 0
+	local shown = calm and goal or motion.ease(state.shown, goal, k, 1e-3)
+	state.shown = shown
+	if shown == state.drawn and alpha == state.alpha then
+		return
+	end
+	state.drawn, state.alpha = shown, alpha
+	gui.set_enabled(node, shown > 0)
+	if shown > 0 then
+		local s = spec.size * self.last.thumb_scale * (0.6 + 0.4 * shown)
+		place(node, spec.x + self.drawn_slide, spec.y + spec.size * 0.08 + self.drawn_scroll, s, s, withAlpha(WHITE, alpha * shown))
+	end
 end
 
 local function newDot()
@@ -180,11 +224,15 @@ local function draw(self, layout, alpha)
 	self.current = nil
 	for i, spec in ipairs(layout.nodes) do
 		drawNode(nodes[i], spec, alpha)
+		gui.set_enabled(nodes[i].image, false)
+		self.images[i] = self.images[i] or { shown = 0 }
+		self.images[i].drawn = nil
 		if spec.current then
 			self.current = { halo = nodes[i].halo, spec = spec }
 		end
 	end
 	self.drawn, self.drawn_alpha = layout, alpha
+	self.drawn_slide, self.drawn_scroll = nil, nil
 end
 
 function init(self)
@@ -193,6 +241,7 @@ function init(self)
 	gui.set_visible(root, false)
 	gui.set_visible(head, false)
 	self.nodes, self.dots, self.marks, self.shown, self.time = {}, {}, {}, 0, 0
+	self.images = {}
 	self.page = { shadow = box("key", true), sheet = box("key", true) }
 	self.title = text("title", head)
 	self.banner = { rule = box("dot"), title = text("title"), detail = text("body"), intro = text("body") }
@@ -201,7 +250,7 @@ end
 function update(self, dt)
 	local model = models.layout("select")
 	self.time = self.time + dt
-	self.shown = self.shown + ((model and 1 or 0) - self.shown) * (1 - math.exp(-FADE_RATE * dt))
+	self.shown = motion.ease(self.shown, model and 1 or 0, 1 - math.exp(-FADE_RATE * dt))
 	self.last = model or self.last
 	local shown = model ~= nil or self.shown > 0.01
 	gui.set_enabled(root, shown)
@@ -213,8 +262,17 @@ function update(self, dt)
 	if layout ~= self.drawn or math.abs(alpha - self.drawn_alpha) > 1e-3 then
 		draw(self, layout, alpha)
 	end
-	gui.set_screen_position(root, vmath.vector3(self.last.slide, self.last.scroll, 0))
-	gui.set_screen_position(head, vmath.vector3(0, self.last.scroll, 0))
+	if self.last.slide ~= self.drawn_slide or self.last.scroll ~= self.drawn_scroll then
+		self.drawn_slide, self.drawn_scroll = self.last.slide, self.last.scroll
+		gui.set_screen_position(root, vmath.vector3(self.last.slide, self.last.scroll, 0))
+		gui.set_screen_position(head, vmath.vector3(0, self.last.scroll, 0))
+	end
+	local k = 1 - math.exp(-IMAGE_RATE * dt)
+	for i, spec in ipairs(layout.nodes) do
+		if spec.state ~= "locked" then
+			drawImage(self, self.nodes[i].image, self.images[i], spec, self.last.thumbs, alpha, k, layout.calm)
+		end
+	end
 	if self.current then
 		local pulse = layout.calm and 0 or 0.5 + 0.5 * math.sin(self.time * PULSE_RATE)
 		pulseHalo(self.current.halo, self.current.spec, alpha, pulse)

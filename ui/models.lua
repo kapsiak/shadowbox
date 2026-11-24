@@ -4,6 +4,7 @@
 local M = {}
 
 local layouts, presses = {}, {}
+local none = {}
 
 function M.publish(name, layout)
 	layouts[name] = layout
@@ -20,7 +21,10 @@ end
 
 -- Returns and clears the presses since the last call.
 function M.takePresses(name)
-	local list = presses[name] or {}
+	local list = presses[name]
+	if not list or #list == 0 then
+		return none
+	end
 	presses[name] = {}
 	return list
 end

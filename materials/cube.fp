@@ -14,7 +14,7 @@ out vec4 out_fragColor;
 uniform fs_uniforms
 {
     mediump vec4 tint;
-    // x: selection highlight, y: x-ray (see-through), z: invalid placement, w: hover
+    // x: selection highlight, y: x-ray (0 solid .. 1 a ghost), z: invalid placement, w: hover
     mediump vec4 fx;
     // x: pattern number (1..6) drawn on the faces so pieces differ by more than colour; 0 = none
     mediump vec4 pattern;
@@ -85,6 +85,10 @@ void main()
         base = mix(base, base * 0.78, patternMask(pattern.x, var_uv));
     }
 
+    // X-ray fades the piece toward a ghost: faint inside, its outline kept, so walls read through.
+    float outline = 1.0 - smoothstep(0.0, 0.08, outer);
+    float see_through = mix(1.0, mix(0.08, 0.55, outline), fx.y);
+
     vec3 color;
     float alpha;
     if (glass.x > 0.5)
@@ -95,13 +99,13 @@ void main()
         float density = mix(0.55, 0.9, max(rim, fresnel));
         vec3 body = deep * (0.55 + 0.6 * lit);
         vec3 glint = key_color.rgb * pow(max(dot(n, h), 0.0), 40.0) * 0.35 + vec3(0.12) * rim * fresnel + room * fresnel * 0.2;
-        alpha = density * (1.0 - 0.6 * fx.y);
+        alpha = density * see_through;
         color = body + glint / max(alpha, 0.05);
     }
     else
     {
         color = base * lit + (key_color.rgb * sheen * 0.9 + room * fresnel * 0.6) * finish.y * occlusion;
-        alpha = 1.0;
+        alpha = see_through;
     }
 
     // Selection lifts the whole piece and adds a rim light in a pale version of its own colour.
@@ -117,6 +121,6 @@ void main()
     color = mix(color, vec3(grey) * vec3(1.0, 0.92, 0.92), 0.65 * fx.z);
     color = mix(color, vec3(0.93, 0.4, 0.38), fx.z * band);
 
-    alpha *= (1.0 - 0.5 * fx.y * (1.0 - glass.x)) * (1.0 - 0.4 * fx.z);
+    alpha *= 1.0 - 0.4 * fx.z;
     out_fragColor = vec4(color * alpha, alpha);
 }

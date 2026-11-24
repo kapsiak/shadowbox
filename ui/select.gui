@@ -11,9 +11,16 @@ textures {
   name: "hud"
   texture: "/ui/hud.atlas"
 }
+textures {
+  name: "thumbs"
+  texture: "/ui/hud.atlas"
+}
 material: "/materials/gui_back.material"
 layers {
   name: "shapes"
+}
+layers {
+  name: "thumbs"
 }
 layers {
   name: "body"

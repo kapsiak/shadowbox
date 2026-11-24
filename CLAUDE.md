@@ -21,6 +21,8 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - Wall digits: `python3 tools/make_digits.py` bakes `view/digits.png` (Outfit, distance field).
 - Release: `tools/release.sh` bundles a release web build of `[project] version` (shown on the
   main menu) into `bundles/<version>/` and zips it for itch.io or static hosting.
+  `--demo` builds only what `levels/demo.lua` lists (packs, `limit` caps a pack's first levels;
+  `tools/demo_resources.lua` derives the files and rule cards) into `bundles/<version>-demo/`.
 - Regenerate icons / sounds: `python3 tools/make_icons.py` (also the web splash `web/splash.png`
   and the desktop app icons), `python3 tools/make_sounds.py`
   (then refresh `ui/hud.atlas` from `ui/icons/*.png`). New or updated fonts: run
@@ -44,21 +46,26 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
   levels, rule cards seen), `lessons` (which rule cards a level uses), `settings`,
   `save_data` (versioned save format: migrations, level fingerprints, validation on load).
 - `core/`: pure puzzle model: `level` (ASCII parsing), `shape`, `orient` (24 rotations),
-  `grid`, `channels` (per-ray monoids: light, pattern), `projection` (folds channels), `rules`, `state`, `history`, `raycast`.
+  `grid`, `channels` (per-ray monoids: light, pattern), `projection` (folds channels), `rules`, `state`, `history`, `raycast`;
+  `memo` (change detection: work that runs only when its inputs change).
 - `input/`: `controls` (every keyboard action, its label, HUD button and default keys; the
   bindable keys; rebinding), `actions` (Defold → raw events; keys through the player's keymap),
   `router` (controls claim input), `gestures`, `interpret`.
 - `view/`: `board_view` (pieces), `walls_view` (projection panels), `board_pool` (boards reused
   for the whole run: runtime resources are rewritten in place, never released, since released
-  ones were not freed), `tray_view`, `thumbs` (live level thumbnails, built a few per frame), `orbit` (camera rig), `cameras` (shared view/projection matrices), `mesh_gen`, `piece_look`, `audio` (cue queue),
+  ones were not freed), `tray_view`, `thumbs` (level thumbnails as still images: each board is
+  drawn once into a cell of the `thumbs` render target, shown through a runtime atlas in the
+  select GUI; boards are built, drawn and returned a few per frame), `orbit` (camera rig),
+  `cameras` (shared view/projection matrices; snapshot passes into render targets), `mesh_gen`, `piece_look`, `audio` (cue queue),
   `theme` (**all colours and lighting: restyle here**), `palette`.
 - `ui/`: pure layouts (`hud_layout`, `panel_layout`, `select_layout` (one chapter per page,
   computed once per screen size and chapter; scroll and the sideways slide are offsets on the GUI
   roots, nodes pooled by slot), `sheets` content), `models`
   (layouts published to GUI scripts), GUI scripts (`hud`, `panel`, `select`).
-- `render/game.render_script`: background → `gui_back` (select screen) → board (panels, cubes,
-  glass blended over them) → tray → optional
-  scaled-target blit → GUI.
+- `render/game.render_script`: thumbs (only on frames that publish shots, into
+  `render/thumbs.render_target`) → background → `gui_back` (select screen) → board (panels, cubes,
+  glass blended over them) → tray → optional scaled-target blit → GUI. Each pass sets the GPU
+  state it relies on (culling, depth, blending) rather than inheriting it.
 - `docs/mechanics.md`: agreed design for mechanics beyond silhouettes (not built yet).
 - `docs/art_direction.md`: the agreed look (geometric) and its clarity rules; check visual, sound and UI work against it.
 - `levels/`: `index.lua` lists packs; each pack has `pack.lua` and level files; `showcase.lua` is
@@ -78,9 +85,17 @@ Budgets: check resource use against engine limits whenever content or UI grows. 
 font batches 128 (text nodes batch only when adjacent in draw order, so GUIs put text on their
 own layers, as `ui/select.gui` does), GUI `max_nodes` (select 512, about 300 used: one chapter
 plus a dot per pack; hud and panel 256), `max_count` 512
-game objects, wall textures 8x8, runtime resources never freed (reuse through pools).
+game objects, wall textures 8x8, runtime resources never freed (reuse through pools), the
+thumbnail target 2048x2048 RGBA plus depth (about 32 MB, no MSAA) holding up to 36 levels per
+chapter.
+Per frame: no allocation and no work while nothing changes. Views ease with `motion.ease`
+(snaps to the goal) and rest once settled; layouts, cameras and GUI elements are rebuilt only when
+their inputs change (`core/memo`, or comparing the published table). Game objects are addressed by
+URL (`msg.url`), never by hash id: `go.set_position` and friends allocate a URL per call for a
+hash. vmath calls allocate; per-frame math writes into vectors kept for the purpose. The wall shader reads only the quadrant's neighbours
+(`materials/panel.fp`, one packed `shape` layer), about 9 texture reads per pixel.
 
-## Status (eighth session)
+## Status (ninth session)
 Done: core model, rendering, camera (ortho snaps), drag by contact placement, HUD and rail, tray,
 main menu, pause menu, tabbed settings (audio, display incl. DefOS fullscreen and render scale,
 game, accessibility incl. colour-blind palettes, patterns, high contrast, UI size,
@@ -162,7 +177,17 @@ Alpha (0.1.0-alpha): the web page is themed with no Defold branding (`web/theme.
 the loading splash); fullscreen is offered wherever the browser allows it (not iPhone Safari),
 never restored on web start, and follows Esc; app icons are the mark.
 
+Ninth session (release and performance): `tools/release.sh --demo` builds a demo from
+`levels/demo.lua` (packs, `limit` caps a pack's first levels; only the files it uses are bundled).
+Peek: hold Space or the eye button (bottom corner, opposite the rail) and pieces fade to ghosts so
+the walls read (one x-ray curve in `materials/cube.fp` serves peek, the straight views and the
+card scenes). Quality caps pixel density (Low 1x, Medium 2x, the default, High native); saves keep
+their old value. Performance pass, measured on desktop: an idle level went from ~0.75 to ~0.3 ms of
+Lua and ~600 to ~0 KB/s of garbage; the level select from 54 to 60 fps (wall shader from ~30 to 9
+reads per pixel, thumbnails static images, ~0.16 ms of Lua). The thumbnail sway is gone.
+
 Next, in order:
+0. On the phone: the performance pass (warmth, Medium quality, the level select), peek, demo build.
 1. On the phone (rebuild the web build first): tray turning, second-finger turn directions (is
    "above tips away" natural?), no accidental second taps during a pinch, no Keys tab.
 2. Play-test Towers, Overhead, Glass, Counting, Parity and Ledger; reorder by feel.
@@ -179,7 +204,8 @@ To judge in play: count/parity wall readability (too many vs too few look alike;
 ring enough), tooltips, keycap contrast and which cap is which in pairs, the first-time card
 flow and the HUD "?" key (the user's save has seen every card).
 
-Untested or known: the level select's lag (chapter pages now build at most one chapter's thumbnails; judge again); twist direction on touch, fullscreen toggle, chapter dots past ~14 packs (they shrink
+Untested or known: dragging pieces after the performance pass (springs, tray, shake), the
+thumbnail target's memory on phones; twist direction on touch, fullscreen toggle, chapter dots past ~14 packs (they shrink
 on narrow phones to clear the back key), WebGL1 `fwidth`, the
 save on focus loss and quit, key press sinking, stacked glass (blending depends on draw order);
 the editor linter shows stale warnings (e.g. `board_view.present` arity, `.axis` field).

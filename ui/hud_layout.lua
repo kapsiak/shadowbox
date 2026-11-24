@@ -15,7 +15,9 @@ local GAP = 0.22
 local RAIL_STEP = 1.2
 
 local function place(out, id, x, y, size, group, enabled)
-	out[#out + 1] = { id = id, x = x, y = y, size = size, group = group, enabled = enabled ~= false }
+	local b = { id = id, x = x, y = y, size = size, group = group, enabled = enabled ~= false }
+	out[#out + 1] = b
+	return b
 end
 
 -- Button size: a comfortable touch target in density-independent pixels, kept within sensible
@@ -44,8 +46,8 @@ local function tooltip(b, text, w, left_handed)
 end
 
 -- screen: { w, h, scale, safe = { left, right, top, bottom } } in window pixels.
--- state: { piece_controls, can_undo, can_redo, title, subtitle, solved, left_handed,
--- tip = { id, text } or nil }
+-- state: { piece_controls, can_undo, can_redo, title, subtitle, solved, left_handed, peek,
+-- tip = { id, text } or nil }. A button held down for its effect has `held`.
 -- Returns { buttons, labels, tray, insets, tooltip } where insets are the screen fractions the
 -- board should keep clear of (left, right, top, bottom) and tooltip is { text, x, y, w, h, size }.
 function M.compute(screen, state)
@@ -76,6 +78,9 @@ function M.compute(screen, state)
 			place(buttons, id, rail_x, first - (i - 1) * step, rail_size, "rail")
 		end
 	end
+
+	local peek_x = state.left_handed and right - size / 2 or left + size / 2
+	place(buttons, "peek", peek_x, tray_h + gap + size / 2, size, "aside").held = state.peek
 
 	local corner_span = (#top_left + #top_right) * (size + gap)
 	local landscape = w - corner_span - 2 * margin > size * 5

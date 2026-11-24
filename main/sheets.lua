@@ -6,6 +6,7 @@ local content = require "ui.sheets"
 local panel_layout = require "ui.panel_layout"
 local hit = require "ui.hit"
 local controls = require "input.controls"
+local memo = require "core.memo"
 
 local M = {}
 
@@ -47,9 +48,23 @@ local builders = {
 }
 
 -- Lays out the top sheet (or nil when none is open) and remembers it for hit testing.
+local function count(t)
+	local n = 0
+	for _ in pairs(t) do
+		n = n + 1
+	end
+	return n
+end
+
+-- Laid out again only when the sheet or something its content reads changes.
 function M.layout(screen, info)
-	local name = M.top(screen)
-	screen.sheet_layout = name and panel_layout.compute(info, builders[name](info, screen)) or nil
+	local name, safe, cards = M.top(screen), info.safe, screen.cards
+	screen.sheet_inputs = screen.sheet_inputs or {}
+	if memo.changed(screen.sheet_inputs, name, info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
+		info.settings, info.can_continue, count(info.seen), cards and cards[1], cards and #cards,
+		screen.keys_page, screen.rebinding, screen.settings_tab) then
+		screen.sheet_layout = name and panel_layout.compute(info, builders[name](info, screen)) or nil
+	end
 	return screen.sheet_layout
 end
 

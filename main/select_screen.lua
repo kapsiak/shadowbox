@@ -2,7 +2,8 @@
 -- open level shown as a live 3D thumbnail. Tapping an open level plays it; dragging up and down
 -- (with a fling on release) or the wheel scrolls; swiping sideways, the arrow keys flanking the
 -- chapter dots under the title, the left and right keys, or a dot itself turn the page.
--- Implements the screen contract used by main.script.
+-- Implements the screen contract used by main.script. Thumbnails are still images (view/thumbs),
+-- drawn once per layout, the ones in view first.
 --
 -- The layout is computed once per screen size and chapter and published with the scroll and
 -- slide offsets, so scrolling moves one offset rather than rebuilding the page.
@@ -13,20 +14,19 @@ local models = require "ui.models"
 local audio = require "view.audio"
 local cameras = require "view.cameras"
 local thumbs = require "view.thumbs"
+local motion = require "view.motion"
 local rules = require "core.rules"
+local memo = require "core.memo"
 
 local M = {}
 
 local SCROLL_RATE = 16
 local WHEEL_STEP = 0.08
-local FOV = math.rad(16)
 -- A fling keeps the release speed and slows by FRICTION per second until below FLING_MIN
 -- pixels per second; a release more than FLING_HOLD seconds after the last move does not fling.
 local FRICTION = 3.5
 local FLING_MIN = 40
 local FLING_HOLD = 0.08
--- Thumbnails are built this many node sizes before they scroll into view.
-local THUMB_MARGIN = 1.5
 -- A turned page slides in from this fraction of the screen width and settles at SLIDE_RATE; a
 -- swipe turns the page once it has moved TURN_AT of the width.
 local SLIDE_FROM = 0.35
@@ -35,30 +35,52 @@ local TURN_AT = 0.12
 local KEY_STEPS = { orbit_left = -1, orbit_right = 1 }
 
 -- boards: the saved boards by level key; pool: the board pool (view/board_pool); last: the
--- level last played ({ pack, index }) or nil, whose chapter opens first.
-function M.enter(catalog, saved, boards, pool, last)
+-- level last played ({ pack, index }) or nil, whose chapter opens first; atlas: the thumbnail
+-- atlas (view/thumbs.createAtlas).
+function M.enter(catalog, saved, boards, pool, last, atlas)
+	cameras.clear("board")
 	return {
 		module = M, catalog = catalog, saved = saved, boards = boards, last = last,
-		thumbs = thumbs.new(pool), specs = {}, model = {},
+		thumbs = thumbs.new(pool, atlas), thumb_specs = {}, model = { thumb_scale = thumbs.SCALE }, frame = {}, button_inputs = {},
 		clock = 0, velocity = 0, drag_velocity = 0, moved_at = -math.huge, slide = 0,
 	}
 end
 
 function M.exit(screen)
 	thumbs.release(screen.thumbs)
-	cameras.clear("board")
 	models.publish("select", nil)
 	models.publish("hud", nil)
 end
 
-local function frameKey(info)
-	local safe = info.safe
-	return ("%d %d %g %d %d %d %d %s"):format(info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
-		tostring(info.settings.reduced_motion))
-end
-
 local function clamped(screen, scroll)
 	return math.max(0, math.min(screen.view.max_scroll, scroll))
+end
+
+-- What each open level's thumbnail shows: a solved level its solved board (the player's if
+-- they left it solved, else the level's own); an open level the board as the player left it,
+-- or no pieces (the targets alone).
+local function thumbPoses(saved, level, state)
+	if state == "solved" and not (saved and rules.evaluate(level, { poses = saved }).solved) then
+		return level.solution
+	end
+	return saved or {}
+end
+
+-- The thumbnails of the page's open levels, those nearest the middle of the screen at the
+-- current scroll first.
+local function thumbSpecs(screen, h)
+	local specs, distance = {}, {}
+	for _, node in ipairs(screen.view.nodes) do
+		if node.state ~= "locked" then
+			local level = screen.catalog.packs[node.pack].levels[node.index]
+			specs[#specs + 1] = { id = node.id, level = level, poses = thumbPoses(screen.boards[node.id], level, node.state) }
+			distance[node.id] = math.abs(node.y + screen.goal_scroll - h / 2)
+		end
+	end
+	table.sort(specs, function(a, b)
+		return distance[a.id] < distance[b.id] or (distance[a.id] == distance[b.id] and a.id < b.id)
+	end)
+	return specs
 end
 
 -- Lays out the page when the screen or the chapter changes; a chapter opens scrolled to the
@@ -66,32 +88,39 @@ end
 function M.layout(screen, info)
 	screen.info = info
 	screen.chapter = screen.chapter or select_layout.chapterOf(screen.catalog, screen.saved, screen.last, info.settings.open_all)
-	local key = frameKey(info) .. " " .. screen.chapter
-	if key ~= screen.frame then
+	local safe = info.safe
+	if memo.changed(screen.frame, info.w, info.h, info.scale, safe.left, safe.right, safe.top, safe.bottom,
+		info.settings.reduced_motion, screen.chapter) then
 		local turned = screen.view_chapter ~= screen.chapter
-		screen.frame, screen.view_chapter = key, screen.chapter
+		screen.view_chapter = screen.chapter
 		screen.view = select_layout.compute(info, screen.catalog, screen.saved, screen.chapter)
 		screen.model.layout = screen.view
-		screen.specs = {}
 		if turned then
 			screen.scroll, screen.goal_scroll, screen.velocity = screen.view.focus, screen.view.focus, 0
 		end
 		screen.goal_scroll = clamped(screen, screen.goal_scroll)
+		screen.thumb_specs = thumbSpecs(screen, info.h)
 	end
 	return screen.view
 end
 
--- The back key, fixed in its corner, and the chapter arrows, which scroll with the header.
+-- The back key, fixed in its corner, and the chapter arrows, which scroll with the header;
+-- built again only when the page or the scroll changes.
 local function buttons(screen)
 	local view, scroll = screen.view, screen.scroll
+	if not memo.changed(screen.button_inputs, view, scroll, screen.chapter) then
+		return screen.buttons
+	end
 	local function key(id, k, dy, enabled)
 		return { id = id, x = k.x, y = k.y + dy, size = k.size, group = "corner", enabled = enabled }
 	end
-	return {
+	screen.buttons = {
 		key("back", view.back, 0, true),
 		key("page_prev", view.arrows.prev, scroll, screen.chapter > 1),
 		key("page_next", view.arrows.next, scroll, screen.chapter < #screen.catalog.packs),
 	}
+	screen.hud = { buttons = screen.buttons, labels = {} }
+	return screen.buttons
 end
 
 -- Only the buttons are claimed; levels are not, so a drag that starts on one still scrolls.
@@ -231,53 +260,22 @@ local function fling(screen, dt)
 	end
 end
 
--- What each open level's thumbnail shows: a solved level its solved board (the player's if
--- they left it solved, else the level's own); an open level the board as the player left it,
--- or no pieces (the targets alone).
-local function thumbPoses(saved, level, state)
-	if state == "solved" and not (saved and rules.evaluate(level, { poses = saved }).solved) then
-		return level.solution
-	end
-	return saved or {}
-end
-
--- The thumbnail of `node`, made once per layout; only its position follows the scroll.
-local function thumbSpec(screen, node)
-	local spec = screen.specs[node.id]
-	if not spec then
-		local level = screen.catalog.packs[node.pack].levels[node.index]
-		spec = { id = node.id, level = level, poses = thumbPoses(screen.boards[node.id], level, node.state), number = node.index, size = node.size }
-		screen.specs[node.id] = spec
-	end
-	spec.x, spec.y = node.x + screen.slide, node.y + node.size * 0.08 + screen.scroll
-	return spec
-end
-
-local function thumbSpecs(screen, h)
-	local specs = {}
-	for _, node in ipairs(screen.view.nodes) do
-		local y, reach = node.y + screen.scroll, node.size * THUMB_MARGIN
-		if node.state ~= "locked" and y > -reach and y < h + reach then
-			specs[#specs + 1] = thumbSpec(screen, node)
-		end
-	end
-	return specs
-end
 
 function M.present(screen, dt, info)
 	screen.clock = screen.clock + dt
 	M.layout(screen, info)
 	fling(screen, dt)
-	screen.scroll = screen.scroll + (screen.goal_scroll - screen.scroll) * (1 - math.exp(-SCROLL_RATE * dt))
+	screen.scroll = motion.ease(screen.scroll, screen.goal_scroll, motion.blend(SCROLL_RATE, dt), 0.01)
 	if not screen.swiping then
 		screen.slide = screen.slide * math.exp(-SLIDE_RATE * dt)
 		screen.slide = math.abs(screen.slide) < 0.5 and 0 or screen.slide
 	end
-	local eye_from = cameras.setScreen("board", info.w, info.h, FOV)
-	thumbs.present(screen.thumbs, thumbSpecs(screen, info.h), dt, eye_from, info.settings)
+	thumbs.present(screen.thumbs, screen.thumb_specs, info.settings)
+	screen.model.thumbs = screen.thumbs.images
 	screen.model.scroll, screen.model.slide = screen.scroll, screen.slide
 	models.publish("select", screen.model)
-	models.publish("hud", { buttons = buttons(screen), labels = {} })
+	buttons(screen)
+	models.publish("hud", screen.hud)
 end
 
 return hot(..., M)

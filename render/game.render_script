@@ -1,4 +1,5 @@
--- Pass order: background, gui_back (screens drawn beneath 3D), board (panels, cubes, glass),
+-- Pass order: thumbs (level thumbnails drawn into their render target, only on frames that
+-- publish shots), background, gui_back (screens drawn beneath 3D), board (panels, cubes, glass),
 -- tray (own camera, fresh depth), gui, card (a rule card's scene in its own viewport over the GUI).
 -- The card's board stands far from the play board, so each camera sees only its own.
 -- Panels always sit behind the board, so drawing them first lets see-through cubes blend over them.
@@ -18,12 +19,16 @@ function init(self)
 		[graphics.BUFFER_TYPE_STENCIL_BIT] = 0,
 	}
 	self.clear_depth = { [graphics.BUFFER_TYPE_DEPTH_BIT] = 1 }
+	self.clear_empty = {
+		[graphics.BUFFER_TYPE_COLOR0_BIT] = vmath.vector4(0, 0, 0, 0),
+		[graphics.BUFFER_TYPE_DEPTH_BIT] = 1,
+	}
 end
 
 local function usePass(pass)
 	render.set_view(pass.view)
 	render.set_projection(pass.proj)
-	return { frustum = pass.frustum }
+	return pass.options
 end
 
 -- Glass is premultiplied, blended over what lies behind it without writing depth.
@@ -40,6 +45,7 @@ local function drawBoard(pass)
 	render.enable_state(graphics.STATE_BLEND)
 
 	render.set_blend_func(graphics.BLEND_FACTOR_SRC_ALPHA, graphics.BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
+	render.disable_state(graphics.STATE_CULL_FACE)
 	render.draw(predicates.panel, options)
 
 	render.set_blend_func(graphics.BLEND_FACTOR_ONE, graphics.BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
@@ -47,6 +53,23 @@ local function drawBoard(pass)
 	render.draw(predicates.cube, options)
 	drawGlass(predicates.glass, options)
 	render.draw_debug3d()
+end
+
+-- Draws each shot of a snapshot pass into its viewport of the pass's render target.
+local function drawShots(self, pass)
+	render.set_render_target(pass.target)
+	if pass.clear then
+		render.clear(self.clear_empty)
+	end
+	for _, shot in ipairs(pass.shots) do
+		local v = shot.viewport
+		render.set_viewport(v.x, v.y, v.w, v.h)
+		render.clear(self.clear_depth)
+		drawBoard(shot)
+	end
+	render.disable_state(graphics.STATE_CULL_FACE)
+	render.disable_state(graphics.STATE_DEPTH_TEST)
+	render.set_render_target(render.RENDER_TARGET_DEFAULT)
 end
 
 local function drawTray(pass, clear_depth)
@@ -64,16 +87,22 @@ local function drawTray(pass, clear_depth)
 	render.disable_state(graphics.STATE_DEPTH_TEST)
 end
 
+local IDENTITY = vmath.matrix4()
+local gui_proj = { w = 0, h = 0 }
+
 local function drawGui(w, h, ...)
-	render.set_view(vmath.matrix4())
-	render.set_projection(vmath.matrix4_orthographic(0, w, 0, h, -1, 1))
+	if w ~= gui_proj.w or h ~= gui_proj.h then
+		gui_proj.w, gui_proj.h, gui_proj.matrix = w, h, vmath.matrix4_orthographic(0, w, 0, h, -1, 1)
+	end
+	render.set_view(IDENTITY)
+	render.set_projection(gui_proj.matrix)
 	render.disable_state(graphics.STATE_DEPTH_TEST)
 	render.disable_state(graphics.STATE_CULL_FACE)
 	render.enable_state(graphics.STATE_BLEND)
 	render.set_blend_func(graphics.BLEND_FACTOR_SRC_ALPHA, graphics.BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
 	render.enable_state(graphics.STATE_STENCIL_TEST)
-	for _, predicate in ipairs({ ... }) do
-		render.draw(predicate)
+	for i = 1, select("#", ...) do
+		render.draw((select(i, ...)))
 	end
 	render.disable_state(graphics.STATE_STENCIL_TEST)
 	render.disable_state(graphics.STATE_BLEND)
@@ -120,6 +149,10 @@ function update(self)
 	local w, h = render.get_window_width(), render.get_window_height()
 	if w == 0 or h == 0 then
 		return
+	end
+	local thumbs = cameras.get("thumbs")
+	if thumbs then
+		drawShots(self, thumbs)
 	end
 	local scaled = frame.scale < 1
 	if scaled then

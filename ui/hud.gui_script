@@ -1,7 +1,9 @@
 -- Draws the HUD layout published in ui/hud_model. Buttons ease in and out as the layout
 -- gains or loses them (gone at once while a screen change covers the screen); rail buttons also
--- slide in from the right edge.
+-- slide in from the right edge. Each element is drawn again only when its spec (the same table
+-- while the layout is unchanged) or its easing changes.
 local models = require "ui.models"
+local motion = require "view.motion"
 
 local theme = require "view.theme"
 
@@ -33,7 +35,11 @@ end
 function init(self)
 	self.buttons = {}
 	self.labels = {}
+	self.present = {}
+	self.present_labels = {}
 end
+
+local EMPTY = { buttons = {}, labels = {} }
 
 -- The tooltip: a small white key with ink text, raised above the buttons whenever new ones appear.
 local function drawTooltip(self, spec, k)
@@ -55,7 +61,11 @@ local function drawTooltip(self, spec, k)
 		end
 		self.raise_tip = false
 	end
-	tip.shown = spec and tip.shown + (1 - tip.shown) * k or 0
+	local shown = spec and motion.ease(tip.shown, 1, k) or 0
+	if shown == tip.shown and (spec or tip.last) == tip.last then
+		return
+	end
+	tip.shown = shown
 	tip.last = spec or tip.last
 	local t = tip.last
 	for _, node in ipairs({ tip.shadow, tip.face, tip.text }) do
@@ -90,7 +100,11 @@ end
 
 local function drawLabel(label, k)
 	local spec = label.last
-	label.scale = label.scale + (1 - label.scale) * k
+	local scale = motion.ease(label.scale, 1, k)
+	if spec == label.drawn and scale == label.scale and label.shown == label.drawn_shown then
+		return
+	end
+	label.drawn, label.drawn_shown, label.scale = spec, label.shown, scale
 	local s = spec.size / FONT_SIZE[spec.style] * label.scale
 	gui.set_text(label.node, spec.text)
 	gui.set_screen_position(label.node, vmath.vector3(spec.x, spec.y, 0))
@@ -103,7 +117,10 @@ end
 
 -- Labels fade in and out with the layout; the banner pops in from a smaller scale each time.
 local function updateLabels(self, layout, k, covered)
-	local present = {}
+	local present = self.present_labels
+	for id in pairs(present) do
+		present[id] = nil
+	end
 	for _, spec in ipairs(layout.labels) do
 		local label = self.labels[spec.id] or createLabel(spec)
 		self.labels[spec.id] = label
@@ -111,7 +128,7 @@ local function updateLabels(self, layout, k, covered)
 		present[spec.id] = true
 	end
 	for id, label in pairs(self.labels) do
-		label.shown = (covered and not present[id]) and 0 or label.shown + ((present[id] and 1 or 0) - label.shown) * k
+		label.shown = (covered and not present[id]) and 0 or motion.ease(label.shown, present[id] and 1 or 0, k)
 		if not present[id] and id == "banner" then
 			label.scale = 0.6
 		end
@@ -119,20 +136,18 @@ local function updateLabels(self, layout, k, covered)
 	end
 end
 
-local function approach(a, b, k)
-	return a + (b - a) * k
-end
-
 local function draw(b)
 	local spec = b.last
-	if not spec then
+	if not spec or (spec == b.drawn and b.shown == b.drawn_shown and b.enabled == b.drawn_enabled
+		and b.scale == b.drawn_scale and spec.held == b.drawn_held) then
 		return
 	end
+	b.drawn, b.drawn_shown, b.drawn_enabled, b.drawn_scale, b.drawn_held = spec, b.shown, b.enabled, b.scale, spec.held
 	local slide = spec.group == "rail" and (1 - b.shown) * spec.size * 1.5 or 0
 	local visible = b.shown > 0.01
 	gui.set_enabled(b.face, visible)
 	gui.set_enabled(b.shadow, visible)
-	local pressed = (1 - b.scale) / (1 - PULSE)
+	local pressed = spec.held and 1 or (1 - b.scale) / (1 - PULSE)
 	local size = spec.size
 	local drop = LIFT * spec.size
 	gui.set_screen_position(b.face, vmath.vector3(spec.x + slide, spec.y - drop * pressed, 0))
@@ -149,10 +164,13 @@ local function draw(b)
 end
 
 function update(self, dt)
-	local layout = models.layout("hud") or { buttons = {}, labels = {} }
+	local layout = models.layout("hud") or EMPTY
 	local k = 1 - math.exp(-EASE_RATE * dt)
 	local covered = (models.layout("fade") or 0) > 0.95
-	local present = {}
+	local present = self.present
+	for id in pairs(present) do
+		present[id] = nil
+	end
 	for _, spec in ipairs(layout.buttons) do
 		local b = self.buttons[spec.id]
 		if not b then
@@ -172,9 +190,9 @@ function update(self, dt)
 	drawTooltip(self, not covered and layout.tooltip or nil, k)
 	for id, b in pairs(self.buttons) do
 		local spec = present[id]
-		b.shown = (covered and not spec) and 0 or approach(b.shown, spec and 1 or 0, k)
-		b.enabled = approach(b.enabled, (spec and spec.enabled) and 1 or 0, k)
-		b.scale = approach(b.scale, 1, k)
+		b.shown = (covered and not spec) and 0 or motion.ease(b.shown, spec and 1 or 0, k)
+		b.enabled = motion.ease(b.enabled, (spec and spec.enabled) and 1 or 0, k)
+		b.scale = motion.ease(b.scale, 1, k)
 		draw(b)
 	end
 end
