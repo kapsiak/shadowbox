@@ -1,10 +1,11 @@
 -- Usage (from the project root):
 --   luajit tools/carve.lua [-k min-max] [-t tries] [-o shown] [-n limit] [-r seed]
---                          [-g colour,... [-q opaque] [-m mixes]] sculpture.lua
+--                          [-f] [-g colour,... [-q opaque] [-m mixes]] sculpture.lua
 -- Cuts a sculpture (a level file whose drawn cells may all share one letter; `views`, `walls`
 -- and `rules` carry over; if `pieces` names a colour for each drawn letter, every piece is cut
 -- inside one letter's region and takes its colour) into random pieces of min..max cubes, profiles each cut with the solver and prints
 -- the best as level files: fewest solutions first, then the most search.
+-- With -f, pieces are cut across regions and take the colour of most of their cubes.
 -- With -g, all but `opaque` pieces become glass, each listed colour used once before repeats;
 -- -m keeps only cuts with at least that many wall cells lit by a mix (a colour no piece has).
 package.path = "./?.lua;./tools/?.lua;" .. package.path
@@ -57,9 +58,32 @@ local function neighbours(cells, at, i)
 	return out
 end
 
--- Grows pieces from the most cornered free cell; nil if a piece cannot reach `min` cubes.
+-- Cubes in each cell's connected one-colour blob.
+local function blobSizes(cells, at, region)
+	local size = {}
+	for i in ipairs(cells) do
+		if not size[i] then
+			local members, seen = { i }, { [i] = true }
+			for _, m in ipairs(members) do
+				for _, j in ipairs(neighbours(cells, at, m)) do
+					if not seen[j] and region[j] == region[i] then
+						seen[j] = true
+						members[#members + 1] = j
+					end
+				end
+			end
+			for _, m in ipairs(members) do
+				size[m] = #members
+			end
+		end
+	end
+	return size
+end
+
+-- Grows pieces from the most cornered free cell; nil if a piece cannot reach `min` cubes
+-- (a blob smaller than `min` becomes one piece).
 local function cut(cells, at, region, min, max)
-	local owner, count = {}, 0
+	local owner, count, blob = {}, 0, blobSizes(cells, at, region)
 	local free = function(i, j)
 		return not owner[j] and region[i] == region[j]
 	end
@@ -98,17 +122,18 @@ local function cut(cells, at, region, min, max)
 			owner[j] = count
 			members[#members + 1] = j
 		end
-		if #members < min then
+		if #members < min and #members < blob[start] then
 			return nil
 		end
 	end
 end
 
--- Neighbouring pieces get different colours, preferring the least used.
-local function colours(cells, at, owner, count)
-	local touching = {}
+-- Touching pieces get different colours. Each piece prefers the region colour most of its cubes
+-- have, then the sculpture's other region colours, then the least used.
+local function colours(cells, at, owner, count, region)
+	local touching, votes, drawn = {}, {}, {}
 	for p = 1, count do
-		touching[p] = {}
+		touching[p], votes[p] = {}, {}
 	end
 	for i in ipairs(cells) do
 		for _, j in ipairs(neighbours(cells, at, i)) do
@@ -116,16 +141,39 @@ local function colours(cells, at, owner, count)
 				touching[owner[i]][owner[j]] = true
 			end
 		end
+		if region[i] then
+			votes[owner[i]][region[i]] = (votes[owner[i]][region[i]] or 0) + 1
+			drawn[region[i]] = true
+		end
+	end
+	local names, listed = {}, {}
+	for _, name in ipairs(PALETTE) do
+		names[#names + 1], listed[name] = name, true
+	end
+	for name in pairs(drawn) do
+		if not listed[name] then
+			names[#names + 1] = name
+		end
 	end
 	local chosen, used = {}, {}
+	local function better(p, a, b)
+		local va, vb = votes[p][a] or 0, votes[p][b] or 0
+		if va ~= vb then
+			return va > vb
+		end
+		if (drawn[a] or false) ~= (drawn[b] or false) then
+			return drawn[a]
+		end
+		return (used[a] or 0) < (used[b] or 0)
+	end
 	for p = 1, count do
 		local best
-		for _, name in ipairs(PALETTE) do
+		for _, name in ipairs(names) do
 			local clash = false
 			for q in pairs(touching[p]) do
 				clash = clash or chosen[q] == name
 			end
-			if not clash and (not best or (used[name] or 0) < (used[best] or 0)) then
+			if not clash and (not best or better(p, name, best)) then
 				best = name
 			end
 		end
@@ -195,14 +243,7 @@ local function toLevel(def, cells, at, size, region, owner, count, glass, opaque
 			layers[y][z] = table.concat(row)
 		end
 	end
-	local names = {}
-	if next(region) then
-		for i in ipairs(cells) do
-			names[owner[i]] = region[i]
-		end
-	else
-		names = colours(cells, at, owner, count)
-	end
+	local names = colours(cells, at, owner, count, region)
 	local pieces = {}
 	for p, material in ipairs(materials(names, count, glass, opaque)) do
 		pieces[letters[p]] = material
@@ -258,6 +299,8 @@ while i <= #arg do
 		i = i + 1
 		opts.min, opts.max = arg[i]:match("(%d+)-(%d+)")
 		opts.min, opts.max = tonumber(opts.min), tonumber(opts.max)
+	elseif a == "-f" then
+		opts.free = true
 	elseif a == "-g" then
 		i = i + 1
 		opts.glass = {}
@@ -279,7 +322,7 @@ math.randomseed(opts.seed)
 local def, cells, at, size, region = readSculpture(path)
 local results, seen = {}, {}
 for _ = 1, opts.tries do
-	local owner, count = cut(cells, at, region, opts.min, opts.max)
+	local owner, count = cut(cells, at, opts.free and {} or region, opts.min, opts.max)
 	if owner then
 		local lvl_def = toLevel(def, cells, at, size, region, owner, count, opts.glass, opts.opaque)
 		local text = format(lvl_def)

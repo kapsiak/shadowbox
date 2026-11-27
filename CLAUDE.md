@@ -16,6 +16,9 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - Level carving: `luajit tools/carve.lua -k 3-5 -t 600 -r <seed> sculpture.lua` cuts a drawn
   sculpture into random pieces and prints the best cuts (fewest solutions) as level files.
   `-g cyan,yellow -q 1 -m 2` makes all but one piece glass and keeps cuts with 2+ mixed wall cells.
+  A sculpture whose `pieces` colours its letters is cut inside those regions; `-f` cuts freely
+  and each piece takes the region colour most of its cubes have (touching pieces always differ).
+  Sculptures live in `tools/sculptures/<pack>/` (everything under `levels/` is bundled).
 - Input bindings: `luajit tools/make_bindings.lua` writes every bindable key in `input/controls`
   into `input/game.input_binding` (rerun after changing the key list).
 - Wall digits: `python3 tools/make_digits.py` bakes `view/digits.png` (Outfit, distance field).
@@ -205,6 +208,11 @@ levels may come). Hints (pause menu, key T; unmarked on the select): the lowest 
 solution orientation, shown as a ghost (`view/ghost_piece.go`, piece shader at full x-ray in the
 glass pass) until placed; cleared by undo past it, restart and leaving. Paragraph height counts
 line breaks. luacheck on PATH runs under Lua 5.5 and fails to load; no 5.1 copy is installed.
+
+Eleventh session (content): Transport (20, accent coral, two walls, after Windows), the first
+themed pack: subjects are rough sketches at Windows size (10-21 cubes, 2-6 pieces, 1-3 solutions),
+carved with `-f`. Inserting a pack before Towers locks later packs for existing saves until it is
+played (accepted at alpha). Awaits play-test (ordering, whether colours read as vehicles).
 
 Next, in order:
 0. In the game: credits line breaks look wrong (ask the user what they see); the hint ghost's
