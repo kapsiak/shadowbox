@@ -1,5 +1,3 @@
--- Reads and writes the save file. Saves alternate between two slots, each stamped with a
--- sequence number, and loading takes the newest slot that reads back; a write cut short or a
 -- corrupt file costs at most the latest save. The folder name is fixed here rather than taken
 -- from the game's title, so renaming the game keeps saves.
 local hot = require "core.hot"
@@ -21,7 +19,6 @@ local function read(app_id, name)
 	end
 end
 
--- The newest saved data, or nil when there is none.
 function M.load()
 	local newest
 	for i, name in ipairs(SLOTS) do
@@ -34,7 +31,6 @@ function M.load()
 	return newest
 end
 
--- Writes `data` (a table, stamped with a sequence number) to the next slot; true on success.
 function M.save(data)
 	data.seq = seq + 1
 	if sys.get_engine_info().is_debug then

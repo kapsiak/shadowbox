@@ -1,6 +1,3 @@
--- Exhaustive search over a level's arrangements: every placement of every piece that the
--- walls allow, and every combination of them that the rules accept. Pure Lua on core.
--- options: { limit = solutions to stop at, keep = how many solutions to return in `found` }.
 local orient = require "core.orient"
 local shape = require "core.shape"
 local grid = require "core.grid"
@@ -39,7 +36,6 @@ local function formKey(form)
 	return table.concat(parts, " ")
 end
 
--- Distinct orientations, and a key equal for pieces that are the same up to rotation.
 local function shapeInfo(piece_shape)
 	local seen, distinct, canonical = {}, 0, nil
 	for n = 1, orient.count do
@@ -76,7 +72,6 @@ local function targetAt(level, v, i)
 	return t
 end
 
--- Ray ids for every cell, one per view, and each ray's target value per channel.
 local function buildRays(level)
 	local size, rays, targets = level.size, {}, {}
 	local count = size[1] * size[2] * size[3]
@@ -103,9 +98,6 @@ local function buildRays(level)
 	return rays, targets, count
 end
 
--- Whether k cubes of `value` on a ray can be part of its fold to `target`. On an idempotent
--- channel every value must leave the target unchanged; on a monotone one the cubes' own fold
--- must not pass it.
 local function allowed(target, value, k)
 	for name, t in pairs(target) do
 		local channel, v = channels[name], value[name]
@@ -134,12 +126,10 @@ local function needy(target)
 	return false
 end
 
--- The most cubes a ray may hold, when a monotone channel of unit cubes bounds it.
 local function rayLimit(target)
 	return target.count
 end
 
--- For rays whose value follows from their cube count alone: whether a final count matches.
 local function rayExact(target)
 	if target.count then
 		return function(n) return n == target.count end
@@ -189,7 +179,6 @@ local function candidatesFor(level, piece, rays, targets)
 	return out
 end
 
--- Cubes whose removal changes no wall.
 local function hiddenCubes(level)
 	local items = {}
 	for id, piece in ipairs(level.pieces) do
@@ -266,7 +255,6 @@ local function buildPieces(level, rays, targets)
 	return info
 end
 
--- options: { limit = max solutions to count }.
 function M.analyse(level, options)
 	local limit = options and options.limit or 1000
 	local rays, targets, cell_count = buildRays(level)
@@ -343,7 +331,6 @@ function M.analyse(level, options)
 		report.capped = report.solutions >= limit
 	end
 
-	-- Moves a candidate on or off the board; false when it overfills a bounded ray.
 	local function place(entry, i, delta)
 		local cand, fits_rays = entry.candidates[i], true
 		for _, idx in ipairs(cand.cells) do
@@ -377,7 +364,6 @@ function M.analyse(level, options)
 				return
 			end
 		end
-		-- A ray no remaining option reaches is closed: its value is final.
 		for _, r in ipairs(exact_rays) do
 			if not coverable[r] and not exact[r](ray_cover[r]) then
 				return

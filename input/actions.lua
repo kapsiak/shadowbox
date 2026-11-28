@@ -1,5 +1,3 @@
--- Translates Defold input actions into the raw events input/gestures.lua consumes. Keys arrive
--- as "key_<name>" (tools/make_bindings.lua); a keymap (input/controls) names their action.
 local hot = require "core.hot"
 local controls = require "input.controls"
 local M = {}
@@ -13,7 +11,6 @@ for _, k in ipairs(controls.keys) do
 	keys[hash("key_" .. k.name)] = k.name
 end
 
--- Returns a raw event, or nil for actions the game does not use. keymap: { [key] = action }.
 function M.read(action_id, action, keymap)
 	if action_id == nil then
 		return { kind = "hover", x = action.screen_x, y = action.screen_y }

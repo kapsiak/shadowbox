@@ -1,12 +1,6 @@
--- What the player has solved, what is open to them, and what comes next. Pure Lua.
--- A catalog is { packs = { { id, levels = { level, ... }, keys = { "pack/name", ... } }, ... } };
--- progress is { solved = { [key] = true }, seen = { [card id] = true } } (see game/lessons).
 local hot = require "core.hot"
 local M = {}
 
--- Within a pack the first two levels are open and each later level opens once either of the
--- two before it is solved, so one hard level can be skipped. A pack opens once at least half
--- of the previous pack is solved.
 local OPEN_AT_START = 2
 local LOOKBACK = 2
 local PACK_THRESHOLD = 0.5
@@ -53,7 +47,6 @@ function M.solvedCount(progress, pack)
 	return n
 end
 
--- Levels solved and levels in all, across the catalog.
 function M.totals(progress, catalog)
 	local solved, total = 0, 0
 	for _, pack in ipairs(catalog.packs) do
@@ -62,7 +55,6 @@ function M.totals(progress, catalog)
 	return solved, total
 end
 
--- open_all (a player setting) opens every pack and level.
 function M.isPackOpen(progress, catalog, pack_index, open_all)
 	if open_all or pack_index == 1 then
 		return true
@@ -87,7 +79,6 @@ function M.isOpen(progress, catalog, pack_index, level_index, open_all)
 	return false
 end
 
--- The next open level after (pack_index, level_index), or nil at the end of the catalog.
 function M.next(progress, catalog, pack_index, level_index, open_all)
 	local p, l = pack_index, level_index + 1
 	while catalog.packs[p] do

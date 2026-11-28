@@ -1,14 +1,3 @@
--- Usage (from the project root):
---   luajit tools/reach.lua [-p WxH] [-a yaw_degrees] [-t pitch_degrees] levels/<pack>/<level>.lua ...
--- How easy each piece is to drag into its solution pose: pointer positions are swept over a
--- phone screen (-p, in dp; default 390x844) seen from the iso view (turned by -a, tilted -t
--- degrees down; default 28), and the area whose drop lands on the solution is reported in
--- finger targets (44 dp squares). "order": the pieces placed bottom up (hint order), each onto
--- the ones before it; "last": every other piece already placed. 0: no pointer position reaches it.
--- drift: mean dp between the pointer and the grabbed cube's centre where a pose is shown.
--- sticky: share of positions showing a pose on a fresh drag that show another when the sweep
--- runs on, forward then back (placement depending on the path taken).
--- PLAY=<file> loads another play module instead of game/play (to compare placements).
 package.path = "./?.lua;./tools/?.lua;" .. package.path
 
 local level = require "core.level"
@@ -36,7 +25,6 @@ local function rotate(yaw, pitch, v)
 	return { x * cy + z * sy, y, -x * sy + z * cy }
 end
 
--- The board camera as view/orbit lens builds it, as a function from screen point to world ray.
 local function camera(lvl, w, h, yaw, pitch)
 	local s = lvl.size
 	local lo = { -MARGIN, -FLOOR_GAP, -MARGIN }
@@ -75,7 +63,6 @@ end
 local drift = { sum = 0, n = 0 }
 local sticky = { changed = 0, n = 0 }
 
--- The pose shown for each pointer position, visited in `order`; fresh: each drag starts anew.
 local function sweep(s, points, fresh, order)
 	local shown = {}
 	for _, i in ipairs(order) do
@@ -90,9 +77,6 @@ local function sweep(s, points, fresh, order)
 	return shown
 end
 
--- Finger targets' worth of screen area whose drop puts `id` at its solution pose over `placed`;
--- `px_per_radian` turns angular misses into dp for the drift tally. One grab serves the sweep,
--- as one drag does in the game.
 local function reach(lvl, placed, id, ray, w, h, tray_top, px_per_radian)
 	local s = play.new(lvl, placed)
 	local goal = lvl.solution[id]

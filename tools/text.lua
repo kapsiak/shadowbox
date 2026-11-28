@@ -1,8 +1,3 @@
--- Lists the player-facing text with where it lives (file:line), to find and edit it.
--- Usage: luajit tools/text.lua [section...]
--- Sections: a pack id (its title, intro and level names, in play order), "rules" (the rule
--- cards), "interface" (menus, buttons, key labels). With none, every section.
-
 local CONTENT_KEYS = { name = true, title = true, intro = true, text = true, touch = true }
 local INTERFACE = { "ui/sheets.lua", "ui/hud_layout.lua", "ui/select_layout.lua", "input/controls.lua", "game/settings.lua" }
 
@@ -20,7 +15,6 @@ local function isComment(line)
 	return line:match("^%s*%-%-") ~= nil
 end
 
--- Content files: `key = "text"` lines for the keys players read.
 local function showContent(path)
 	for n, line in ipairs(lines(path)) do
 		local key, value = line:match('^%s*(%a+)%s*=%s*"(.*)",?%s*$')
@@ -30,7 +24,6 @@ local function showContent(path)
 	end
 end
 
--- Interface code: every string literal that starts with a capital letter.
 local function showInterface()
 	for _, path in ipairs(INTERFACE) do
 		for n, line in ipairs(lines(path)) do

@@ -1,6 +1,3 @@
--- The level select screen: one chapter (pack) per page, a banner followed by its levels on a
--- trail that switches back and forth across rows, scrolled vertically; a row of dots under the
--- title shows every chapter. Pure: positions are window pixels with the origin at the bottom left.
 local hot = require "core.hot"
 local progress = require "game.progress"
 local hud_layout = require "ui.hud_layout"
@@ -17,7 +14,6 @@ local TURN = 0.32
 local SAMPLES = 32
 local FOCUS_HEIGHT = 0.45
 
--- Dots spaced evenly by arc length along the curve at(t), t in [0, 1].
 local function trailDots(dots, at, node, accent, lit)
 	local samples, length = { { at(0) } }, 0
 	samples[1][3] = 0
@@ -43,8 +39,6 @@ local function trailDots(dots, at, node, accent, lit)
 	end
 end
 
--- The trail between neighbouring levels: straight within a row; at the end of a row, a
--- half loop outside it down to the next row.
 local function trailCurve(from, to, node)
 	if from.y == to.y then
 		local dir = to.x > from.x and 1 or -1
@@ -65,14 +59,6 @@ local function levelState(saved, catalog, p, l, open_all)
 	return progress.isSolved(saved, key) and "solved" or progress.isOpen(saved, catalog, p, l, open_all) and "open" or "locked"
 end
 
--- One chapter's page. screen: { w, h, scale, safe, settings }; chapter: the pack index shown.
--- Positions are in screen pixels with nothing scrolled; scrolling down by s moves everything up
--- by s. Returns { back, title, marks, arrows, page, banner, nodes, trail, calm, max_scroll,
--- focus }: back is the back key in the top corner (fixed, not scrolled), marks the chapters as a
--- row of dots under the title ({ x, y, size, chapter, current, enabled }), arrows the prev and
--- next keys flanking the dots, kept clear of the back key ({ x, y, size }), page the
--- chapter's sheet { x, y, w, h } (centre and size), and focus the scroll that brings the
--- current level (the next one to play) to the middle of the screen, or 0 if it lies elsewhere.
 function M.compute(screen, catalog, saved, chapter)
 	local w, h, safe = screen.w, screen.h, screen.safe
 	local short = math.min(w, h)
@@ -96,7 +82,6 @@ function M.compute(screen, catalog, saved, chapter)
 		marks = {}, nodes = {}, trail = {}, calm = screen.settings and screen.settings.reduced_motion,
 	}
 	y = y - title_size * 1.25
-	-- The arrows sit half a gap beyond the outer dots; the gap shrinks so they clear the back key.
 	local count, arrow = #catalog.packs, title_size * 1.3
 	local reach = cx - (back.x + back.size / 2) - arrow * 0.6
 	local mark_gap = math.min(title_size * 0.9, (reach - arrow * 0.6) / (count / 2))
@@ -151,14 +136,12 @@ function M.compute(screen, catalog, saved, chapter)
 	return layout
 end
 
--- The key back to the menu, in the top-left corner inside the safe area.
 function M.backKey(screen)
 	local size = hud_layout.keySize(math.min(screen.w, screen.h), screen.scale)
 	local margin = size * 0.35
 	return { x = screen.safe.left + margin + size / 2, y = screen.h - screen.safe.top - margin - size / 2, size = size }
 end
 
--- The chapter holding level (pack, index), or else the current level's.
 function M.chapterOf(catalog, saved, last, open_all)
 	if last and catalog.packs[last.pack] then
 		return last.pack

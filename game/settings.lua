@@ -1,6 +1,3 @@
--- Player preferences. Pure Lua: plain values with defaults, sanitized when loaded.
--- Sliders have ranges, choices have a fixed list of values, `bindings` holds the key bindings
--- a player changed (cleaned by input/controls), everything else is a toggle.
 local hot = require "core.hot"
 local controls = require "input.controls"
 local M = {}
@@ -26,7 +23,6 @@ M.defaults = {
 
 local ranges = { sound = { 0, 1 }, music = { 0, 1 }, sensitivity = { 0.4, 2 } }
 local cleaners = { bindings = controls.changed }
--- The highest pixel density each quality renders at; high keeps the display's own.
 local DENSITY_CAP = { low = 1, balanced = 2 }
 
 M.choices = {
@@ -74,7 +70,6 @@ function M.new(data)
 	return s
 end
 
--- Returns a copy of `s` with one value changed (sanitized).
 function M.with(s, key, value)
 	local copy = {}
 	for k, v in pairs(s) do
@@ -88,8 +83,6 @@ function M.range(key)
 	return ranges[key]
 end
 
--- How much of the screen resolution the 3D scene renders at, for a quality choice and the
--- display's pixel density (window.get_display_scale).
 function M.renderScale(quality, display_scale)
 	local cap = DENSITY_CAP[quality]
 	return cap and math.min(1, cap / display_scale) or 1

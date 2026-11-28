@@ -1,8 +1,3 @@
--- Decides: turns commands into outcomes (or reasons they are refused) and
--- evaluates a state against the level. Nothing here changes state.
---
--- Commands:  { kind = "place", piece = id, pose = pose }  |  { kind = "remove", piece = id }
--- Outcome:   { changes = { { piece = id, pose = pose_or_nil }, ... } }
 local hot = require "core.hot"
 local shape = require "core.shape"
 local grid = require "core.grid"
@@ -10,8 +5,6 @@ local projection = require "core.projection"
 
 local M = {}
 
--- Placing piece `id` at `pose`, given the cells the other pieces occupy (grid.occupancy without
--- `id`), so callers trying many poses build the occupancy once.
 function M.checkPlace(level, occupied, id, pose)
 	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
 		if not grid.contains(level.size, c) then
@@ -37,7 +30,6 @@ function M.check(level, state, command)
 	return nil, "unknown_command"
 end
 
--- Projections of the current arrangement compared to each target, and whether the level is solved.
 function M.evaluate(level, state)
 	local items, placed = {}, 0
 	for id, pose in pairs(state.poses) do

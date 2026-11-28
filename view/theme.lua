@@ -1,13 +1,7 @@
--- The game's look as data (docs/art_direction.md): piece palettes, lighting, panels, background
--- and interface colours. Everything visual reads from here.
--- Colours are { r, g, b } or { r, g, b, a } in [0, 1].
 local hot = require "core.hot"
 local M = {}
 
--- Pieces are named by colour in level files; each palette maps every name to a colour.
--- The colour-blind palettes keep pieces distinct under each colour vision deficiency.
 M.palettes = {
-	-- Okabe-Ito based, for deuteranopia and protanopia.
 	deuteranopia = {
 		coral = { 0.93, 0.62, 0.25 }, sky = { 0.45, 0.72, 0.92 }, mint = { 0.25, 0.68, 0.55 },
 		butter = { 0.95, 0.89, 0.4 }, lilac = { 0.78, 0.55, 0.7 }, peach = { 0.86, 0.45, 0.22 },
@@ -46,28 +40,20 @@ M.light = {
 	key_dir = { -0.6, -0.6, -0.5 },
 }
 
--- Glossy moulded plastic: bevel width (in faces), gloss of the surface, and the light from the
--- viewer's side (relative to the key light).
 M.finish = { bevel = 0.1, gloss = 0.55, fill = 0.35 }
 
--- Projection panels: the screen, the shadow cast on it, the lines of the target, the frame.
 M.panel = {
 	normal = { surface = { 0.98, 0.98, 0.97 }, shadow = { 0.3, 0.31, 0.35 }, line = { 0.15, 0.15, 0.17 }, frame = { 0.8, 0.8, 0.81 } },
 	high_contrast = { surface = { 1, 0.99, 0.97 }, shadow = { 0.16, 0.18, 0.26 }, line = { 0.08, 0.08, 0.09 }, frame = { 0.5, 0.5, 0.52 } },
 }
 
--- The wall behind the board, from the top to the bottom of the screen; a glow behind the board
--- and a faint isometric lattice (rgb, a: strength).
 M.background = {
 	top = { 0.85, 0.845, 0.83 }, bottom = { 0.75, 0.745, 0.73 },
 	glow = { 1, 1, 1, 0.04 }, lattice = { 0.6, 0.6, 0.6, 0.22 },
 }
--- The tray: a flat slab on a solid lip (rgb, a: height in pixels), its corners cut by `chamfer` pixels.
 M.tray = { color = { 0.91, 0.905, 0.89 }, lip = { 0.66, 0.655, 0.64, 10 }, chamfer = 22 }
 
--- The interface: white keys on a solid lip that sink when pressed, one bold accent.
 M.ui = {
-	-- how far a key's lip drops below it, in key heights
 	lift = 0.09,
 	face = { 1, 1, 1, 1 }, card = { 0.89, 0.885, 0.87, 1 }, page = { 0.98, 0.98, 0.97, 1 },
 	primary = { 0.93, 0.33, 0.27, 1 }, primary_ink = { 1, 1, 1, 1 }, primary_shadow = { 0.68, 0.2, 0.17, 1 },
@@ -79,7 +65,6 @@ M.ui = {
 	white = { 1, 1, 1, 1 },
 }
 
--- Converts a theme colour to a vmath.vector4 (alpha defaults to 1).
 function M.vec(c)
 	return vmath.vector4(c[1], c[2], c[3], c[4] or 1)
 end

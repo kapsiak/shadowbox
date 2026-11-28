@@ -1,10 +1,3 @@
--- Gives on-screen controls first claim on input. A pointer or touch that starts on a control
--- belongs to that control until it lifts; everything else passes through to the gestures.
--- Pure: hit testing is answered by the `hit(x, y)` function the caller supplies.
---
--- Claimed input becomes control events { id, phase = "press" | "move" | "release", x, y },
--- so buttons can act on press and sliders can follow a drag.
---
 -- The first finger on a touch device arrives both as the primary pointer and as a touch, so
 -- control events come from pointers and from touches other than the first.
 local hot = require "core.hot"
@@ -62,7 +55,6 @@ local function routeTouches(router, ev, hit, events)
 	return { kind = "touches", points = points }
 end
 
--- Returns the event to pass on to gestures (or nil when claimed), and appends control events.
 function M.route(router, ev, hit, events)
 	if ev.kind == "pointer" then
 		return routePointer(router, ev, hit, events)

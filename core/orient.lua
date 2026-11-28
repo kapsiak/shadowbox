@@ -1,5 +1,3 @@
--- The 24 rotations of a cube, addressed by index. An orientation is a number
--- in 1..24, so an invalid rotation cannot be expressed.
 local hot = require "core.hot"
 local M = {}
 
@@ -69,7 +67,6 @@ function M.matrix(n)
 	return matrices[n]
 end
 
--- The orientation nearest the rotation matrix m (row-major): the one the least turn away.
 function M.nearest(m)
 	local best, best_trace = 1, -math.huge
 	for n, r in ipairs(matrices) do
@@ -84,7 +81,6 @@ function M.nearest(m)
 	return best
 end
 
--- Rotates orientation n a quarter turn about a world axis (1=x, 2=y, 3=z), dir = 1 or -1.
 function M.turn(n, axis, dir)
 	return turns[n][axis][dir]
 end

@@ -1,10 +1,4 @@
--- Draws the level select published in ui/models ("select": { layout, scroll, slide, thumbs,
--- thumb_scale }): the title and a dot per chapter, then one chapter's page with its banner and
--- trail, and for each level a plinth, its thumbnail (view/thumbs), its label and a badge. The
--- header hangs from one root that carries the scroll and the page from another that also
--- carries the slide, so the page is redrawn only when the layout or the fade changes. Nodes
--- are pooled by slot. Each kind of node has its own layer (ui/select.gui), so each batches
--- into one draw.
+-- Each kind of node has its own layer (ui/select.gui), so each batches into one draw.
 local models = require "ui.models"
 local motion = require "view.motion"
 local draw = require "ui.draw"
@@ -25,7 +19,6 @@ local PULSE_RATE = 2.4
 
 local accents = {}
 
--- A chapter's accent, mixed toward the ink so it sits quietly on the page.
 local function accentOf(name)
 	if not accents[name] then
 		local c = theme.vec(theme.palettes.default[name] or theme.ui.accent)
@@ -76,7 +69,6 @@ local function drawBanner(b, spec, alpha)
 	setText(b.intro, "body", spec.intro or "", spec.x, spec.y - spec.size * 1.35, spec.size * 0.58, withAlpha(SOFT_INK, a))
 end
 
--- The current level's halo breathes; its position is set with the rest of the node.
 local halo_size, halo_color = vmath.vector3(), vmath.vector4()
 
 local function pulseHalo(halo, spec, alpha, pulse)
@@ -109,7 +101,6 @@ local function drawNode(n, spec, alpha)
 	end
 end
 
--- Slot i of a pool, made by `make` on first use; slots past `count` are disabled.
 local function pooled(pool, count, make)
 	for i = #pool + 1, count do
 		pool[i] = make()
@@ -137,10 +128,6 @@ end
 
 local IMAGE_RATE = 9
 
--- A level's thumbnail grows in once its image is drawn (at once when calm). A child of the
--- page root, which carries the scroll and slide, it is placed from the root's position and
--- then follows it; redrawn only while it changes.
--- node: the slot's image node; state: what it last showed { spec, name, shown, drawn, alpha }.
 local function drawImage(self, node, state, spec, images, alpha, k, calm)
 	local name = images and images[spec.id]
 	if spec ~= state.spec then
@@ -178,7 +165,6 @@ local function drawPage(p, spec, alpha)
 	place(p.sheet, spec.x, spec.y, spec.w, spec.h, withAlpha(PAGE, alpha))
 end
 
--- A chapter's dot: in its accent where it is open, larger for the chapter shown.
 local function drawMark(node, spec, alpha)
 	local size = spec.size * (spec.current and 1.5 or 1)
 	local color = spec.enabled and accentOf(spec.accent) or LOCKED

@@ -1,24 +1,3 @@
--- Turns gestures into intents. Pure: what lies under the pointer is answered by the
--- `pick(x, y)` function the caller supplies, returning { piece, cell, from_tray } or nil.
---
--- Intents:
---   orbit { yaw, pitch }          angles in radians
---   orbit_rate { yaw, pitch }     signed rates, scaled by time by the receiver
---   coast, halt                   an orbiting hand let go (the camera runs on) / a pointer went
---                                 down (the camera stops)
---   zoom { factor }               multiplicative, < 1 zooms in
---   view { name }                 snap to a named camera view
---   tap { piece }                 piece id or nil (empty space)
---   hover { piece }               piece under a pointer moving with no button held
---   grab { piece, cell, from_tray }, drag { x, y }, drop { x, y } or drop { cancelled = true }
---                                 (the piece goes back as it was)
---   turn { about, dir }           about = "vertical" | "right" | "toward" (camera-relative)
---   spin { about, angle }         turn a dragged piece by `angle` radians about = "vertical" |
---                                 "right" (camera-relative), following a second finger or the
---                                 right button; the piece stays put meanwhile. spin_end: let go
---   nudge { along, delta }        along = "vertical" | "drag" (the drag plane's axis)
---   peek { on }                   while held, pieces fade so the walls show
---   undo, redo, remove, menu, next, rules, hint
 -- Intents are shared and must not be changed by their receivers.
 local hot = require "core.hot"
 local controls = require "input.controls"
@@ -26,15 +5,10 @@ local M = {}
 
 local ORBIT_PER_SCREEN = math.pi
 local WHEEL_STEP = 0.9
--- A pinch zooms once its scale has changed by ZOOM_LOCK (a log ratio) and twists once it has
--- turned by TWIST_LOCK; once one has begun, the other needs twice as much.
 local ZOOM_LOCK = math.log(1.08)
 local TWIST_LOCK = math.rad(12)
--- A turn of a dragged piece spins it once its angle reaches SPIN_LOCK (see turnPiece).
 local SPIN_LOCK = math.rad(10)
 
--- What each action (input/controls) stands for, whether from its keys or its HUD button. A
--- `held` action acts while held: { kind, on = true } on press and on = false on release.
 local action_intents = {
 	turn_left = { kind = "turn", about = "vertical", dir = -1 },
 	turn_right = { kind = "turn", about = "vertical", dir = 1 },
@@ -59,7 +33,6 @@ local action_intents = {
 	confirm = { kind = "next" },
 	menu = { kind = "menu" },
 }
--- Orbit keys turn the camera at a rate for as long as they are held, repeats included.
 local key_orbits = {
 	orbit_left = { kind = "orbit_rate", yaw = -1, pitch = 0 },
 	orbit_right = { kind = "orbit_rate", yaw = 1, pitch = 0 },
@@ -68,7 +41,6 @@ local key_orbits = {
 }
 local HOLD = { press = true, release = false }
 
--- Emits an action's intent for a press or release ("press" | "release"; other phases do nothing).
 local function act(id, phase, out)
 	local intent = action_intents[id]
 	if not intent or HOLD[phase] == nil then
@@ -80,9 +52,6 @@ local function act(id, phase, out)
 	end
 end
 
--- screen_height normalizes drag distances so sensitivity is resolution independent.
--- sensitivity scales camera drags; invert flips their direction. A touch drag aims `lift`
--- pixels above the finger, so the piece stays in sight.
 function M.new(screen_height)
 	return { screen_height = screen_height, drag = nil, sensitivity = 1, invert = false, lift = 0, held_x = 0, held_y = 0,
 		tip_lock = 8, turn_step = 80 }
@@ -119,7 +88,6 @@ local function onDragStart(state, g, pick, out)
 	end
 end
 
--- A HUD button (ui/hud_layout ids) pressed or released; phase as in router control events.
 function M.button(id, phase, out)
 	local action = controls.forButton(id)
 	if action then
@@ -136,14 +104,6 @@ local function onTap(state, g, pick, out)
 	end
 end
 
--- Turning a dragged piece about one grid axis per touch (two fingers) or right-button drag
--- (mouse): the first motion past its threshold picks the axis, and the turn then follows the
--- motion; what moved before the choice is passed on, so nothing is lost to the threshold.
--- Sideways spins about vertical once past SPIN_LOCK: the mouse moved right turns the side facing
--- the viewer right; a twist turns the piece against it, as a dial would carry the piece, which
--- stands above the finger holding it while the thumb circles below. Up or down
--- tips once past `tip_lock` pixels, `turn_step` pixels a quarter turn, down tipping toward the
--- viewer.
 local function turnPiece(state, angle, tip, out)
 	local t = state.turning
 	if not t.about then
@@ -170,8 +130,6 @@ local function endTurn(state, out)
 	end
 end
 
--- A dragged piece follows the pointer, except while it is being turned; the way the pointer
--- moved meanwhile is left out, so the piece goes on from where it is.
 local function onDragMove(state, g, out)
 	if state.drag == "piece" and g.button == "secondary" and state.turning then
 		turnPiece(state, g.dx / state.turn_step * math.pi / 2, g.dy, out)
@@ -185,7 +143,6 @@ local function onDragMove(state, g, out)
 	end
 end
 
--- A pinch's zoom and twist, each once past its threshold (from that point on, so nothing jumps).
 local function pinch(state, g, out)
 	local p = (g.start or not state.pinch) and { scale = 0, twist = 0 } or state.pinch
 	state.pinch = p

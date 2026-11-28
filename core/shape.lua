@@ -1,6 +1,3 @@
--- A polycube with all 24 orientations precomputed as offsets from an anchor cube
--- (the one nearest the centroid). A pose's cell is where the anchor sits, so
--- turning a piece only changes its orientation and never drifts.
 local hot = require "core.hot"
 local orient = require "core.orient"
 
@@ -27,7 +24,6 @@ local function nearestToCentroid(cells)
 	return best
 end
 
--- Returns the shape and its anchor cell in the input's coordinates.
 function M.new(cells)
 	local anchor = nearestToCentroid(cells)
 	local forms = {}
@@ -41,7 +37,6 @@ function M.new(cells)
 	return { forms = forms, size = #cells }, { anchor[1], anchor[2], anchor[3] }
 end
 
--- The lowest and highest coordinate on each axis of `cells`.
 function M.bounds(cells)
 	local lo, hi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
 	for _, c in ipairs(cells) do
@@ -60,8 +55,6 @@ local function cellSet(cells, offset)
 	return set
 end
 
--- The cells turned to the piece's resting orientation and moved to the origin: lowest, then
--- shallowest, then the first by a fixed order. Depends only on the shape, never on how it was drawn.
 function M.rest(cells)
 	local best, best_score
 	for n = 1, orient.count do
@@ -84,7 +77,6 @@ function M.rest(cells)
 	return best
 end
 
--- The pose that puts the shape exactly on `cells`, or nil if no orientation fits.
 function M.poseOf(shape, cells)
 	local target_lo = M.bounds(cells)
 	local target = cellSet(cells, { 0, 0, 0 })

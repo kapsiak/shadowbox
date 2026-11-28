@@ -1,6 +1,3 @@
--- The text panels a screen can show (main menu, pause, settings, confirmations), kept as a
--- stack on the screen: screen.sheets = { "pause", "settings" }. Turns control events on a
--- panel into intents, and intents into requests for the app (see main.script).
 local hot = require "core.hot"
 local content = require "ui.sheets"
 local panel_layout = require "ui.panel_layout"
@@ -22,14 +19,11 @@ function M.top(screen)
 	return screen.sheets[#screen.sheets]
 end
 
--- Rule cards wait in screen.cards (ids, the shown one first) with their content in screen.rules
--- (catalog.loadRules); the "rule" sheet shows the first.
 function M.showCards(screen, ids)
 	screen.cards = { unpack(ids) }
 	M.open(screen, "rule")
 end
 
--- The scene level of the rule card on top, or nil.
 function M.cardLevel(screen)
 	return M.top(screen) == "rule" and screen.rules[screen.cards[1]].level or nil
 end
@@ -52,8 +46,6 @@ local builders = {
 	confirm_restart = function() return content.confirmRestart() end,
 }
 
--- Lays out the top sheet (or nil when none is open) and remembers it for hit testing; laid out
--- again only when the sheet or something its content reads changes.
 function M.layout(screen, info)
 	local name, cards = M.top(screen), screen.cards
 	screen.sheet_inputs = screen.sheet_inputs or {}
@@ -69,8 +61,6 @@ function M.hit(screen, x, y)
 	return layout and hit.find(layout.items, x, y)
 end
 
--- Whether (x, y) lies outside the top sheet's card; a tap there dismisses it, as Escape does.
--- Sheets without a card (the main menu) are never dismissed.
 function M.outside(screen, x, y)
 	local card = screen.sheet_layout and screen.sheet_layout.card
 	if not card then
@@ -87,7 +77,6 @@ local function itemById(screen, id)
 	end
 end
 
--- A control event on the panel: buttons and toggles act on press, sliders follow the pointer.
 function M.control(screen, ev, intents)
 	local item = screen.sheet_layout and itemById(screen, ev.id)
 	if not item then
@@ -108,8 +97,6 @@ function M.control(screen, ev, intents)
 	end
 end
 
--- While an action waits for a key, the next key press binds it (Escape cancels). Returns
--- whether the key gesture `g` was taken. bindings: the player's (settings.bindings).
 function M.key(screen, g, intents, bindings)
 	if not screen.rebinding or g.kind ~= "key" or not g.pressed then
 		return false
@@ -122,7 +109,6 @@ function M.key(screen, g, intents, bindings)
 	return true
 end
 
--- Handles the panel intents every screen shares. Returns a request for the app, or nil.
 -- Navigation between sheets (settings, confirmations, closing) happens here; ids a screen
 -- handles itself (such as "restart") should be checked by the screen first.
 function M.apply(screen, intent)

@@ -1,10 +1,6 @@
--- The save format: what the game keeps between runs, versioned, and cleaned when read back.
 -- Pure Lua. Levels are named by key ("pack/name"), never by position, so adding or reordering
 -- levels keeps progress. A saved board carries a fingerprint of its level and is dropped if
 -- the level has changed since.
---
--- In memory: { progress, settings, last = { pack, index } or nil, boards = { [key] = poses } }
--- On disk (version 2): { version, progress, settings, last = key, boards = { [key] = { fingerprint, poses } } }
 local hot = require "core.hot"
 local progress = require "game.progress"
 local settings = require "game.settings"
@@ -30,8 +26,6 @@ end
 
 local fingerprints = setmetatable({}, { __mode = "k" })
 
--- A number that changes whenever the level's size, pieces, arrangement, wall operators or the
--- frame poses are measured in (each piece's resting orientation) change.
 function M.fingerprint(level)
 	if fingerprints[level] then
 		return fingerprints[level]
@@ -76,7 +70,6 @@ local function isPose(pose)
 		and isInteger(pose.orient) and pose.orient >= 1 and pose.orient <= orient.count
 end
 
--- The poses that are well formed and fit the level together.
 local function cleanPoses(level, poses)
 	local formed = {}
 	for id, pose in pairs(type(poses) == "table" and poses or {}) do
@@ -87,10 +80,8 @@ local function cleanPoses(level, poses)
 	return play.fitting(level, formed).poses
 end
 
--- Each migration upgrades data from one version to the next: [v] = function(data, index, catalog).
 local migrations = {}
 
--- Version 2 adds the rule cards seen; a player has seen those of every level they solved.
 migrations[1] = function(data, index)
 	local saved = type(data.progress) == "table" and data.progress or {}
 	local seen = {}
@@ -124,8 +115,6 @@ function M.encode(app, catalog)
 	}
 end
 
--- Reads saved data (or nothing) into the in-memory form, dropping whatever
--- is malformed or no longer matches the catalog.
 function M.decode(data, catalog)
 	data = type(data) == "table" and data or {}
 	local index = levelIndex(catalog)

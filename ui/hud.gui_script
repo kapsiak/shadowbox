@@ -1,7 +1,3 @@
--- Draws the HUD layout published in ui/models ("hud"). Buttons ease in and out as the layout
--- gains or loses them (gone at once while a screen change covers the screen); rail buttons also
--- slide in from their screen edge. Each element is drawn again only when its spec (the same table
--- while the layout is unchanged) or its easing changes.
 local models = require "ui.models"
 local motion = require "view.motion"
 local memo = require "core.memo"
@@ -41,7 +37,6 @@ end
 
 local EMPTY = { buttons = {}, labels = {} }
 
--- The tooltip: a small white key with ink text, raised above the buttons whenever new ones appear.
 local function drawTooltip(self, spec, k)
 	local tip = self.tip
 	if not tip then
@@ -103,7 +98,6 @@ local function drawLabel(label, k)
 	gui.set_enabled(label.node, label.shown > 0.01)
 end
 
--- Labels fade in and out with the layout; the banner pops in from a smaller scale each time.
 local function updateLabels(self, layout, k, covered)
 	local present = self.present_labels
 	for id in pairs(present) do

@@ -1,9 +1,3 @@
--- An orbit camera rig. `goal` is where input puts the camera; `current` eases toward it,
--- except that orbiting by hand moves the angles exactly with the hand and, once let go, coasts
--- on at the hand's speed, slowing to a stop (`release`); a snap to a named view eases again.
--- Zoom is relative to the distance that fits the board. `ortho` in [0, 1] blends toward an
--- orthographic look by narrowing the field of view while backing away (a dolly zoom),
--- so framing is preserved and the camera stays an ordinary perspective camera.
 local hot = require "core.hot"
 local motion = require "view.motion"
 local M = {}
@@ -12,8 +6,6 @@ local PITCH_MIN, PITCH_MAX = math.rad(-89.5), math.rad(5)
 local ZOOM_MIN, ZOOM_MAX = 0.45, 1.8
 local EASE_RATE = 10
 local KEY_RATE = math.rad(120)
--- The hand's speed is averaged over about 1 / TRACK_RATE seconds; a coast loses speed at
--- FRICTION per second and stops below MIN_SPEED (radians per second).
 local TRACK_RATE = 25
 local FRICTION = 5
 local MIN_SPEED = 0.1
@@ -35,9 +27,6 @@ local function copy(p)
 	return { yaw = p.yaw, pitch = p.pitch, zoom = p.zoom, ortho = p.ortho }
 end
 
--- target: vector3 the camera orbits; radius: bounding radius to keep in frame; footprint:
--- optional { radius, half_height } of the upright cylinder holding the board, a tighter fit
--- across the view (see fitDistance).
 function M.new(target, radius, footprint)
 	local iso = M.views.iso
 	local goal = { yaw = iso.yaw, pitch = iso.pitch, zoom = 1, ortho = 0 }
@@ -66,7 +55,6 @@ local function turn(rig, dyaw, dpitch)
 	g.yaw, g.pitch, g.ortho = g.yaw + dyaw, pitch, 0
 end
 
--- Turns the camera by hand: the angles follow exactly, and any coast stops.
 function M.orbitBy(rig, dyaw, dpitch)
 	if not rig.direct then
 		rig.goal.yaw, rig.goal.pitch = rig.current.yaw, rig.current.pitch
@@ -75,13 +63,11 @@ function M.orbitBy(rig, dyaw, dpitch)
 	turn(rig, dyaw, dpitch)
 end
 
--- The hand let go: the camera coasts on at the speed it was turning.
 function M.release(rig)
 	local v = rig.speed
 	rig.coasting = rig.direct and math.max(math.abs(v.yaw), math.abs(v.pitch)) >= MIN_SPEED
 end
 
--- Stops a coast where it is.
 function M.halt(rig)
 	rig.coasting = false
 	rig.speed.yaw, rig.speed.pitch = 0, 0
@@ -95,7 +81,6 @@ function M.zoomBy(rig, factor)
 	rig.goal.zoom = clamp(rig.goal.zoom * factor, ZOOM_MIN, ZOOM_MAX)
 end
 
--- Snaps to a named view along the shortest yaw path.
 function M.snapTo(rig, name)
 	local v = M.views[name]
 	M.halt(rig)
@@ -108,7 +93,6 @@ end
 
 local FIELDS = { "yaw", "pitch", "zoom", "ortho" }
 
--- The hand's speed from the turns made since the last step; zero once the hand rests.
 local function track(rig, dt)
 	local m, v = rig.moved, rig.speed
 	if dt > 0 and (m.yaw ~= 0 or m.pitch ~= 0 or v.yaw ~= 0 or v.pitch ~= 0) then
@@ -130,8 +114,6 @@ local function coast(rig, dt)
 	rig.coasting = math.max(math.abs(v.yaw), math.abs(v.pitch)) >= MIN_SPEED
 end
 
--- Moves the camera toward its goal: turned by hand it follows exactly, coasting it runs on,
--- otherwise it eases. Returns whether it moved.
 function M.step(rig, dt)
 	if rig.coasting then
 		coast(rig, dt)
@@ -156,15 +138,10 @@ function M.rotation(rig)
 	return vmath.quat_rotation_y(rig.current.yaw) * vmath.quat_rotation_x(rig.current.pitch)
 end
 
--- Unit vector from the target toward the camera.
 function M.eyeDirection(rig)
 	return vmath.rotate(M.rotation(rig), vmath.vector3(0, 0, 1))
 end
 
--- Camera placement for the current pose. `aspect` is the screen's; `insets` gives the screen
--- fractions ({ left, right, top, bottom }) the board must keep clear of. The board is fit to
--- the remaining region by shifting the camera sideways (not turning it), so the view keeps
--- its angle. Returns position, rotation, fov, near, far.
 function M.lens(rig, aspect, insets)
 	local c = rig.current
 	local t = c.ortho * c.ortho * (3 - 2 * c.ortho)
@@ -180,7 +157,6 @@ function M.lens(rig, aspect, insets)
 	return position, rotation, fov, math.max(0.05, distance - 4 * rig.radius), distance + 4 * rig.radius
 end
 
--- How see-through cubes should be (0 opaque .. 1 a ghost), following the ortho blend.
 local ORTHO_XRAY = 0.55
 
 function M.xray(rig)

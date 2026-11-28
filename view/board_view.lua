@@ -1,7 +1,3 @@
--- Presents the board: pieces at their displayed poses, and the projection walls (view/walls_view).
--- Pieces move on springs, lift while dragged, shake when a move is refused, and hop when the
--- level is solved. A hint shows as a ghost of a piece at its solution pose. Owns its game objects; rebound to another level in place (see
--- view/board_pool), it replaces its piece objects and keeps the walls. Never touches game state.
 local hot = require "core.hot"
 local orient = require "core.orient"
 local state = require "core.state"
@@ -24,7 +20,6 @@ local HOP_HEIGHT, HOP_TIME, HOP_STAGGER = 0.45, 0.5, 0.09
 local MAX_DT = 1 / 30
 local REST = 1e-6
 
--- The rotation of orientation n (core/orient) as a quaternion.
 function M.poseRotation(n)
 	local x, y, z = orient.apply(n, { 1, 0, 0 }), orient.apply(n, { 0, 1, 0 }), orient.apply(n, { 0, 0, 1 })
 	return vmath.quat_basis(vmath.vector3(x[1], x[2], x[3]), vmath.vector3(y[1], y[2], y[3]), vmath.vector3(z[1], z[2], z[3]))
@@ -34,8 +29,6 @@ local function cellCenter(c)
 	return vmath.vector3(c[1] + 0.5, c[2] + 0.5, c[3] + 0.5)
 end
 
--- An empty board under `parent`, a game object whose transform places it in the world.
--- factories: { piece, glass_piece, ghost_piece, panel } urls.
 function M.create(factories, parent)
 	local ghost = factory.create(factories.ghost_piece)
 	go.set_parent(ghost, parent)
@@ -50,7 +43,6 @@ function M.create(factories, parent)
 	}
 end
 
--- Shows `hint` ({ piece, pose } or nil) as a ghost; its look follows the pieces'.
 local function showGhost(view, hint)
 	local ghost = view.ghost
 	if not hint then
@@ -79,7 +71,6 @@ local function clearPieces(view)
 	view.pieces = {}
 end
 
--- Shows `level` with no pieces placed; buffers: its piece meshes by piece id.
 function M.bind(view, level, buffers)
 	clearPieces(view)
 	showGhost(view, nil)
@@ -101,14 +92,12 @@ function M.bind(view, level, buffers)
 	walls_view.bind(view.walls, level)
 end
 
--- Removes the pieces and hides the walls until the next bind.
 function M.hide(view)
 	clearPieces(view)
 	showGhost(view, nil)
 	walls_view.hide(view.walls)
 end
 
--- Shows `hint` ({ piece, pose } or nil) as a ghost: a hint, or where a turning piece will settle.
 function M.ghost(view, hint)
 	local shown = view.ghost.hint
 	if (hint and hint.piece) ~= (shown and shown.piece) or not state.samePose(hint and hint.pose, shown and shown.pose) then
@@ -116,9 +105,6 @@ function M.ghost(view, hint)
 	end
 end
 
--- The piece `id` is turning: drawn turned by `rotation` (row-major 3x3, on top of its pose) about
--- `point` (world units), exactly, and set back by `moved` (how far its pose lies from where it
--- turns), until a call without an id lets it ease to its pose.
 function M.turning(view, id, rotation, point, moved)
 	if not id then
 		view.turn = nil
@@ -131,8 +117,6 @@ function M.turning(view, id, rotation, point, moved)
 		moved = vmath.vector3(moved[1], moved[2], moved[3]) }
 end
 
--- A piece's goal and effects change only when its pose, lift or highlights do; any change
--- wakes a resting piece.
 local function setGoal(p, pose, lifted, selected, invalid, hovered)
 	if not state.samePose(p.pose, pose) then
 		p.pose = pose
@@ -146,8 +130,6 @@ local function setGoal(p, pose, lifted, selected, invalid, hovered)
 	end
 end
 
--- display: { poses, invalid, dragging, evaluation, hint } from game/play (a new table whenever it
--- changes); selected, hovered: piece ids or nil. Does nothing when none of them changed.
 function M.present(view, display, selected, hovered)
 	if not memo.changed(view.presented, display, selected, hovered, view.colors) then
 		return
@@ -160,7 +142,6 @@ function M.present(view, display, selected, hovered)
 	walls_view.present(view.walls, display, focus)
 end
 
--- Applies display preferences: { colors, patterns, high_contrast, reduced_motion }.
 function M.configure(view, prefs)
 	view.calm = prefs.reduced_motion
 	view.colors = prefs.colors
@@ -174,14 +155,12 @@ function M.configure(view, prefs)
 	walls_view.configure(view.walls, prefs)
 end
 
--- A refused move: the piece shakes in place.
 function M.shake(view, id)
 	if view.pieces[id] and not view.calm then
 		view.pieces[id].shake, view.pieces[id].rest = 1, nil
 	end
 end
 
--- The level is solved: pieces hop in a wave and the walls pulse.
 function M.celebrate(view)
 	for id, p in pairs(view.pieces) do
 		p.hop, p.rest = not view.calm and -(id - 1) * HOP_STAGGER or nil, nil
@@ -205,7 +184,6 @@ local function quatDot(a, b)
 	return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
 end
 
--- A piece at rest keeps its transform until present gives it a new goal, or it shakes or hops.
 local function settled(p, target, goal)
 	return p.shake == 0 and not p.hop and not p.lifted
 		and vmath.length_sqr(p.velocity) < REST and vmath.length_sqr(target - p.position) < REST
@@ -216,7 +194,6 @@ end
 local UP = vmath.vector3(0, 1, 0)
 local NUDGE = vmath.vector3(1e-6, 0, 0)
 
--- A turning piece stands exactly where its turn puts it, lifted.
 local function standTurned(p, turn, goal)
 	local lift = vmath.vector3(0, LIFT, 0)
 	p.position = turn.pivot + vmath.rotate(turn.rotation, goal.position - turn.moved - turn.pivot) + lift
@@ -277,8 +254,6 @@ local function stepPiece(view, p, dt, eye, xray, turn)
 	end
 end
 
--- Advances all motion. eye: unit vector3 from the board toward the camera; xray in [0, 1]
--- (0 solid, 1 ghosts). A change of xray wakes resting pieces to take it up.
 function M.step(view, dt, eye, xray)
 	dt = math.min(dt, MAX_DT)
 	view.time = view.time + dt
@@ -295,8 +270,6 @@ function M.step(view, dt, eye, xray)
 	walls_view.step(view.walls, dt, eye)
 end
 
--- Ends all motion at once: pieces stand at their goals and the walls settle, as seen from `eye`
--- with `xray` (see M.step), for a still picture.
 function M.finish(view, eye, xray)
 	view.xray = xray
 	for _, p in pairs(view.pieces) do
@@ -320,8 +293,6 @@ function M.finish(view, eye, xray)
 	walls_view.finish(view.walls, eye)
 end
 
--- For camera framing: the centre and radius of the board's bounding sphere, walls on either
--- side included, and its footprint (view/orbit new).
 function M.bounds(level)
 	local s, gap = level.size, walls_view.WALL_GAP
 	local lo = vmath.vector3(-gap, -walls_view.FLOOR_GAP, -gap)

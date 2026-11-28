@@ -1,7 +1,3 @@
--- Prints the game.project settings for a demo build: the demo index as the level index and,
--- as custom_resources, only the files it uses (its levels, their pack manifests and rule cards,
--- the menu showcase). Loaded through main/catalog, as the game loads it.
--- Usage (from the project root): luajit tools/demo_resources.lua [levels/demo.lua]
 package.path = "./?.lua;" .. package.path
 
 local catalog_loader = require "main.catalog"

@@ -1,4 +1,3 @@
--- The board volume: bounds, cell indexing, and occupancy derived from poses.
 local hot = require "core.hot"
 local shape = require "core.shape"
 
@@ -13,7 +12,6 @@ function M.index(size, c)
 	return c[1] + size[1] * (c[2] + size[2] * c[3]) + 1
 end
 
--- Maps cell index -> piece id for every placed piece except `skip_id`.
 function M.occupancy(level, poses, skip_id)
 	local occupied = {}
 	for id, pose in pairs(poses) do

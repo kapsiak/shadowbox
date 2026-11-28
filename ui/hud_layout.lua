@@ -1,6 +1,3 @@
--- Where the on-screen controls and labels go for a given screen. Pure: positions are window
--- pixels with the origin at the bottom left, the same space as pointer input, so one layout
--- serves both drawing (ui/hud.gui_script) and hit testing (main.script).
 local hot = require "core.hot"
 local measure = require "ui.measure"
 local M = {}
@@ -21,21 +18,16 @@ local function place(out, id, x, y, size, group, enabled)
 	return b
 end
 
--- A key's size: a comfortable touch target in density-independent pixels, kept within sensible
--- bounds of the screen's shorter side.
 function M.keySize(short, scale)
 	return math.max(short * 0.075, math.min(short * 0.12, BUTTON_DP * scale))
 end
 
--- HUD buttons are keys small enough that the top row fits across.
 local function buttonSize(w, h, scale)
 	local size = M.keySize(math.min(w, h), scale)
 	local row = #top_left + #top_right + 1.5
 	return math.min(size, w / (row * (1 + GAP) + 0.7))
 end
 
--- A tooltip for button `b`: below the top row, beside the rail (toward the board), above the
--- rest; kept on screen.
 local function tooltip(b, text, w, left_handed)
 	local size = b.size * 0.3
 	local tw, th = measure.width(text, size) + 1.4 * size, size * 2
@@ -50,12 +42,6 @@ local function tooltip(b, text, w, left_handed)
 	return { text = text, x = x, y = y, w = tw, h = th, size = size }
 end
 
--- screen: { w, h, scale, safe = { left, right, top, bottom } } in window pixels.
--- state: { piece_controls, can_undo, can_redo, title, subtitle, solved, left_handed, peek,
--- tip = { id, text } or nil }. A button held down for its effect has `held`; rail buttons have
--- `slide`, the direction (1 right, -1 left) of the edge they slide in from.
--- Returns { buttons, labels, tray, insets, tooltip } where insets are the screen fractions the
--- board should keep clear of (left, right, top, bottom) and tooltip is { text, x, y, w, h, size }.
 function M.compute(screen, state)
 	local w, h, safe = screen.w, screen.h, screen.safe
 	local size = buttonSize(w, h, screen.scale)

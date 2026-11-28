@@ -1,7 +1,3 @@
--- Presents unplaced pieces in a strip along the bottom of the screen, drawn by the
--- tray camera. Pieces are sized by their bounding sphere (`extent`, its diameter), so they fit
--- at any camera angle. The tray camera shares the board camera's orientation, so a piece in the
--- tray looks as it will on the board. Layout is in screen pixels, so picking is a rectangle test.
 local hot = require "core.hot"
 local orient = require "core.orient"
 local shape = require "core.shape"
@@ -20,7 +16,6 @@ local CAMERA_FOV = 0.5
 local SLOT_FILL = 0.85
 local EASE_RATE = 14
 
--- The centre of the cells' bounding box and its diagonal.
 local function boxOf(cells)
 	local lo, hi = shape.bounds(cells)
 	local center = vmath.vector3((lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2, (lo[3] + hi[3]) / 2)
@@ -28,8 +23,6 @@ local function boxOf(cells)
 	return center, vmath.length(diagonal)
 end
 
--- The tray scene lives far from the board, seen by its own camera ("tray" in view/cameras).
--- factories: { tray_piece, glass_tray_piece } urls.
 function M.create(level, factories, buffers)
 	local view = { level = level, pieces = {}, slots = {}, height = 0, extent = 1, count = #level.pieces, inputs = {}, lens = {} }
 	for _, piece in ipairs(level.pieces) do
@@ -56,11 +49,6 @@ local function heldChanged(view, held)
 	return false
 end
 
--- Lays out unplaced pieces (those without a displayed pose) for a w x h screen whose bottom
--- `inset` fraction is the tray; rotation is the board camera's. A piece being dragged out of
--- the tray, not yet over the board, follows `pointer` ({ x, y } or nil). ui.held: the
--- orientations of turned tray pieces (game/play), shown as the pieces will be placed. Does
--- nothing unless one of these changed (display is a new table whenever it changes).
 function M.present(view, display, ui, w, h, inset, rotation)
 	if not (memo.changed(view.inputs, display, w, h, rotation, ui.selected, ui.hovered, ui.pointer)
 		or heldChanged(view, ui.held)) then
@@ -99,7 +87,6 @@ function M.present(view, display, ui, w, h, inset, rotation)
 	end
 end
 
--- Applies display preferences: { colors, patterns }.
 function M.configure(view, prefs)
 	view.look = piece_look.update(view.look, view.pieces, view.level, prefs)
 end
@@ -108,7 +95,6 @@ function M.contains(view, y)
 	return y <= view.height
 end
 
--- Piece id whose slot contains the screen point, or nil.
 function M.pick(view, x, y)
 	for id, s in pairs(view.slots) do
 		if not s.held and math.abs(x - s.x) <= s.size / 2 and y <= view.height then
@@ -117,7 +103,6 @@ function M.pick(view, x, y)
 	end
 end
 
--- World position of a screen point at DEPTH in front of the tray camera.
 local function slotToWorld(view, x, y, tan_half)
 	local half_h = view.screen_height / 2
 	local local_point = vmath.vector3(
@@ -135,9 +120,6 @@ local function near(a, b, epsilon)
 	return vmath.length_sqr(a - b) < epsilon * epsilon
 end
 
--- Slots ease in screen space, so pieces glide when the layout changes but stay put on
--- screen while the camera turns. Once every piece has arrived the tray rests until the next
--- change.
 function M.step(view, dt)
 	if not view.awake then
 		return

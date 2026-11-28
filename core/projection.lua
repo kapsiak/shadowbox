@@ -1,5 +1,3 @@
--- Orthographic projections onto a view's (u, v) plane. `project` folds piece values along
--- each ray, one layer per channel; `cover` is the bare geometry: which cells anything reaches.
 local hot = require "core.hot"
 local channels = require "core.channels"
 
@@ -16,8 +14,6 @@ local function dims(size, view)
 	return axes, size[axes.u], size[axes.v]
 end
 
--- items: list of { cells, value }, value holding a number per channel in `names`.
--- Returns { w, h, layers = { [channel] = dense array of folded values } }.
 function M.project(size, view, names, items)
 	local axes, w, h = dims(size, view)
 	local layers = {}
@@ -50,7 +46,6 @@ function M.cover(size, cells, view)
 	return covered
 end
 
--- A cell is ok when every channel equals the target's.
 function M.compare(target, current)
 	local ok, matches = {}, true
 	for i = 1, target.w * target.h do

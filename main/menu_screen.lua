@@ -1,5 +1,3 @@
--- The main menu: a slowly turning cube sculpture casting its projections, with the title and
--- the main menu sheet. Dragging spins the sculpture. Implements the screen contract in main.script.
 local hot = require "core.hot"
 local core_rules = require "core.rules"
 local board_view = require "view.board_view"
@@ -20,7 +18,6 @@ local INSETS = { left = 0, right = 0, top = 0.17, bottom = 0.4 }
 local SIDE_INSETS = { left = panel_layout.SIDE, right = 0.03, top = 0.12, bottom = 0.12 }
 local ZOOM, SIDE_ZOOM = 0.78, 1.15
 
--- pool: the board pool (view/board_pool); rules: the rule cards (catalog.loadRules).
 function M.enter(showcase, pool, rules)
 	local slot = board_pool.acquire(pool, showcase)
 	local center, radius = board_view.bounds(showcase)

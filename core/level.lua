@@ -1,5 +1,3 @@
--- Parses a level definition (a solved arrangement drawn as ASCII layers) into an
--- immutable level. Everything after parsing may trust the level's shape.
 local hot = require "core.hot"
 local shape = require "core.shape"
 local projection = require "core.projection"
@@ -87,7 +85,6 @@ local function readValue(key, spec)
 	return value
 end
 
--- A piece is a colour name, or a table of properties; glass pieces need no colour.
 local function readPiece(key, spec)
 	if type(spec) == "string" then
 		spec = { color = spec }
@@ -113,7 +110,6 @@ local function readPiece(key, spec)
 	return { key = key, color = spec.color, value = value }
 end
 
--- A wall folds its operator, then any piece property channel once a piece sets it.
 local function usedChannels(pieces, operator)
 	local names = { operator }
 	for _, name in ipairs(channels.order) do
@@ -138,7 +134,6 @@ local function readViews(views)
 	return views
 end
 
--- Each view's operator: light unless the level names another.
 local function readWalls(walls, views)
 	walls = walls or {}
 	local out, listed = {}, {}
@@ -227,7 +222,6 @@ function M.parse(def, name)
 	}
 end
 
--- Evaluates level source in an empty environment, then parses it.
 function M.load(source, name)
 	local def, err = source_data.eval(source, name)
 	if err then

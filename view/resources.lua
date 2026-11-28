@@ -36,8 +36,6 @@ local function meshBuffer(streams)
 	return buf
 end
 
--- Writes a mesh into the buffer resource at `path`, or into a new one when path is nil.
--- streams: { count = n, <stream name> = flat number array, ... }. Returns the path.
 function M.buffer(path, streams)
 	local buf = meshBuffer(streams)
 	if not path then
@@ -47,8 +45,6 @@ function M.buffer(path, streams)
 	return path
 end
 
--- Blank texels for a w x h texture: a buffer for M.texture and its byte stream, written
--- in place between uploads (four bytes per texel, RGBA).
 function M.texels(w, h)
 	local buf = buffer.create(w * h, { { name = RGBA, type = buffer.VALUE_TYPE_UINT8, count = 4 } })
 	local stream = buffer.get_stream(buf, RGBA)
@@ -58,8 +54,6 @@ function M.texels(w, h)
 	return buf, stream
 end
 
--- Writes w x h texels (from M.texels) into the low corner of the texture at `path`, or into a
--- new w x h texture when path is nil. Returns the path.
 function M.texture(path, w, h, texels)
 	local params = { width = w, height = h, type = graphics.TEXTURE_TYPE_2D, format = graphics.TEXTURE_FORMAT_RGBA }
 	if not path then

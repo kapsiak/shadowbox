@@ -1,6 +1,3 @@
--- Builds vertex streams for fused polycube pieces. Pure Lua: returns flat arrays
--- keyed by stream name, ready to be written into a Defold buffer.
---
 -- Each visible face carries:
 --   texcoord0  face-local uv in [0, 1]
 --   tangent    the face's u direction (v is normal x tangent)
@@ -51,7 +48,6 @@ local function push(list, ...)
 	end
 end
 
--- cells: piece-local cube positions (cube i spans cell +/- 0.5).
 function M.piece(cells)
 	local present = {}
 	for _, c in ipairs(cells) do
@@ -100,10 +96,6 @@ function M.piece(cells)
 	return out
 end
 
--- A flat w x h quad on the plane where axis `normal_axis` equals `depth`, facing along
--- `facing` (1 or -1) on that axis, with uv (0,0) at the low corner along (u_axis, v_axis).
--- `margins` { u0, u1, v0, v1 } extend the quad beyond each side of the grid; uv outside [0, 1]
--- marks that border region.
 function M.panel(u_axis, v_axis, normal_axis, w, h, depth, margins, facing)
 	local out = { position = {}, normal = {}, texcoord0 = {} }
 	local n = { 0, 0, 0 }

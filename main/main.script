@@ -35,8 +35,6 @@ local controls = require "input.controls"
 
 local DRAG_THRESHOLD = 0.012
 local FADE_OUT, FADE_IN = 0.2, 0.3
--- Unsaved changes are written once they settle for SAVE_DELAY, and at least every SAVE_CAP;
--- solving, changing screen, losing focus and quitting save at once.
 local SAVE_DELAY = 0.5
 local SAVE_CAP = 5
 
@@ -89,9 +87,6 @@ end
 
 local can_fullscreen = defos ~= nil and canFullscreen()
 
--- The screen as the active screen sees it: one table, updated in place each frame. The safe
--- area and display scale are read again when the window size changes or it reports a resize.
--- `geometry` counts changes to w, h, scale and safe, so a layout can watch that one value.
 local function screenInfo(self)
 	local info = self.info
 	local w, h = window.get_size()
@@ -138,7 +133,6 @@ local function openLevel(self, pack_index, level_index)
 	self.sessions[key] = self.screen.session
 end
 
--- The level "Continue" resumes: the last one played if unsolved, else the next open one.
 local function continueTarget(self)
 	local last = self.last
 	if last and self.catalog.packs[last.pack] and self.catalog.packs[last.pack].keys[last.index] then
@@ -177,7 +171,6 @@ local function applyRenderScale(self)
 	frame.scale = settings.renderScale(self.settings.quality, window.get_display_scale())
 end
 
--- Applies the settings that act on the engine, the window and input rather than on a screen.
 local function applyDisplay(self)
 	local prefs = self.settings
 	self.keymap = controls.keymap(prefs.bindings)
@@ -214,7 +207,6 @@ end
 
 local none = {}
 
--- The intents of this frame's input; a frame without input allocates nothing.
 local function gather(self, info)
 	if #self.raw_input == 0 then
 		return none
@@ -243,7 +235,6 @@ local function gather(self, info)
 	return intents
 end
 
--- Records the board in play and saves a newly solved level at once.
 local function record(self)
 	local screen = self.screen
 	if screen.module == play_screen then
@@ -264,7 +255,6 @@ local function record(self)
 	autosave(self)
 end
 
--- Fades out, performs the pending screen change at full cover, then fades back in.
 local function stepFade(self, dt)
 	local fade = self.fade
 	if not fade then

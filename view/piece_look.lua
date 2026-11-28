@@ -1,4 +1,3 @@
--- How a piece mesh looks: lighting from the theme, and colour and pattern from preferences.
 local hot = require "core.hot"
 local palette = require "view.palette"
 local theme = require "view.theme"
@@ -15,15 +14,12 @@ function M.applyLight(mesh)
 	go.set(mesh, "finish", vmath.vector4(f.bevel, f.gloss, f.fill, 0))
 end
 
--- prefs: { colors = palette name, patterns = bool }.
 function M.apply(mesh, level, id, prefs)
 	local piece = level.pieces[id]
 	go.set(mesh, "tint", palette.pieceColor(piece, prefs.colors))
 	go.set(mesh, "pattern", vmath.vector4(prefs.patterns and (id - 1) % 6 + 1 or 0, 0, 0, 0))
 end
 
--- Applies prefs to every piece in `pieces` ({ [id] = { mesh } }) unless `look`, the look
--- last returned, already matches them. Returns the look now applied.
 function M.update(look, pieces, level, prefs)
 	if look and look.colors == prefs.colors and look.patterns == prefs.patterns then
 		return look

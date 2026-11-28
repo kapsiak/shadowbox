@@ -1,5 +1,3 @@
--- Which rule cards a level relies on. Pure. Each card explains one idea (levels/rules/<id>.lua
--- holds its text and scene); a level uses a card when it has that idea's feature.
 local hot = require "core.hot"
 local channels = require "core.channels"
 
@@ -43,7 +41,6 @@ local features = {
 	parity = function(level) return hasWall(level, "parity") end,
 }
 
--- The cards a level uses, in teaching order.
 function M.uses(level)
 	local out = {}
 	for _, id in ipairs(M.order) do
@@ -54,7 +51,6 @@ function M.uses(level)
 	return out
 end
 
--- The cards a level uses that `seen` ({ [id] = true }) lacks, in teaching order.
 function M.unseen(seen, level)
 	local out = {}
 	for _, id in ipairs(M.uses(level)) do

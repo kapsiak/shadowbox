@@ -1,4 +1,3 @@
--- Voxel ray traversal (Amanatides & Woo) through a grid of `size`.
 local hot = require "core.hot"
 local M = {}
 
@@ -26,10 +25,6 @@ local function clipToBox(size, origin, dir)
 	return t_enter, enter_axis
 end
 
--- Visits the cells the ray crosses inside the box, in order: visit(cell, normal, t), where
--- normal is the face the ray entered through (nil if it starts inside the cell). Stops when
--- visit returns a value, which is returned; otherwise returns nil and the exit (last cell,
--- inward normal of the face the ray left through).
 local function traverse(size, origin, dir, visit)
 	local t, enter_axis = clipToBox(size, origin, dir)
 	if not t then
@@ -75,8 +70,6 @@ local function traverse(size, origin, dir, visit)
 	end
 end
 
--- Returns the first cell for which isSolid(cell) holds, the normal of the face the ray
--- entered it through (nil if the ray starts inside that cell), and the ray distance.
 function M.firstHit(size, origin, dir, isSolid)
 	local hit = traverse(size, origin, dir, function(cell, normal, t)
 		if isSolid(cell) then
@@ -88,9 +81,6 @@ function M.firstHit(size, origin, dir, isSolid)
 	end
 end
 
--- The surface the ray meets first, as { cell, normal }: the free cell in front of it and the
--- normal pointing out of it. A surface is a solid cell's face or the inside of the box's
--- boundary (floor or wall) where the ray leaves. Nil when the ray misses the box.
 function M.surface(size, origin, dir, isSolid)
 	local last
 	local hit, exit = traverse(size, origin, dir, function(cell, normal)

@@ -1,6 +1,3 @@
--- The projection panels: front and side walls plus the floor. Walls stand on the far side
--- of the board from the camera, flipping across with a fade. Each cell's state eases, so
--- cells grow in and fade out; a wall pulses when it becomes satisfied.
 local hot = require "core.hot"
 local shape = require "core.shape"
 local grid = require "core.grid"
@@ -13,14 +10,10 @@ local theme = require "view.theme"
 
 local M = {}
 
--- The panels form an open box: the floor sits just under the pieces so they rest on it and
--- reaches out to the walls, which stand on it one margin away from the grid.
 local MARGIN = 0.3
 M.WALL_GAP = MARGIN
 M.FLOOR_GAP = 0.02
 local FADE_RATE = 6
--- Cells change at a constant speed (CELL_SPEED full changes per second), so appearing mirrors
--- disappearing.
 local CELL_SPEED = 7
 local PULSE_RATE = 2.2
 local SWITCH = 0.08
@@ -33,7 +26,6 @@ local margins = {
 	top = { MARGIN, MARGIN, MARGIN, MARGIN },
 }
 local AXIS_NAMES = { "x", "y", "z" }
--- Layer textures have this fixed size; a wall's w x h grid fills their low corner.
 local TEXELS = 8
 
 local function zeros(n)
@@ -52,7 +44,6 @@ local SNAP = { counts = { true, true, true, true }, shape = { false, false, fals
 local slots = { { "texture1", "counts" }, { "texture2", "cells" }, { "texture3", "cells" }, { "texture4", "shape" }, { "texture5", "received" }, { "texture6", "target" } }
 local OPERATOR_IDS = { light = 0, count = 1, parity = 2 }
 
--- The wall objects under `parent`, hidden until bound to a level.
 function M.create(factory_url, parent)
 	local walls = { list = {} }
 	for name, axis in pairs(axes_of) do
@@ -72,10 +63,6 @@ function M.create(factory_url, parent)
 	return walls
 end
 
--- Each wall has a mesh for either side of the board, both facing it: side -1 sits below
--- the low end of its axis, side 1 beyond the high end. Each layer holds w x h RGBA texels
--- that ease from `now` toward `goal`, uploaded to its texture through `texels`; `moving` is
--- set when a goal changes and cleared once `now` reaches it.
 local function bindWall(wall, level, blank)
 	local name, axis = wall.name, wall.axis
 	local axes = projection.axes[name]
@@ -100,7 +87,6 @@ local function bindWall(wall, level, blank)
 	wall.fx = vmath.vector4(-1, 0, 0, 0)
 end
 
--- Shows `level`'s walls, cleared: cells grow in from nothing.
 function M.bind(walls, level)
 	walls.level = level
 	local blank = resources.texels(TEXELS, TEXELS)
@@ -126,7 +112,6 @@ local function boardCells(level, id, pose)
 	return cells
 end
 
--- Sets one goal value of a layer, marking the layer to ease when it changes.
 local function put(layer, i, v)
 	if layer.goal[i] ~= v then
 		layer.goal[i] = v
@@ -134,7 +119,6 @@ local function put(layer, i, v)
 	end
 end
 
--- Marks the cells the focused piece casts onto, in the blue channel of each wall's shape goal.
 local function focusGoals(walls, cells)
 	for name, wall in pairs(walls.list) do
 		local cast = cells and projection.cover(walls.level.size, cells, name)
@@ -147,7 +131,6 @@ end
 
 local WHITE = channels.light.identity
 
--- The floor cells the displayed pieces touch.
 local function floorContact(level, poses)
 	local contact = {}
 	for id, pose in pairs(poses) do
@@ -160,9 +143,6 @@ local function floorContact(level, poses)
 	return contact
 end
 
--- Writes the colour of `light` into texel i: rgb the glass colour and a = 1, or a = 0 for
--- darkness (drawn in the panel's ink). White leaves the texel alone, so a cell keeps its
--- colour while it fades out.
 local function lightGoal(layer, i, light)
 	if not light or light == WHITE then
 		return
@@ -174,14 +154,12 @@ local function lightGoal(layer, i, light)
 	end
 end
 
--- Whether a folded value casts onto its cell, per operator.
 local casts = {
 	light = function(v) return v ~= WHITE end,
 	count = function(v) return v > 0 end,
 	parity = function(v) return v == 1 end,
 }
 
--- Light as the view draws it: the light itself, or darkness wherever another operator casts.
 local function seenLight(operator, v)
 	if operator == "light" or v == nil then
 		return v
@@ -189,8 +167,6 @@ local function seenLight(operator, v)
 	return casts[operator](v) and 0 or WHITE
 end
 
--- The id of a wanted light, so the shader can tell neighbouring regions apart: the glass light
--- itself, or 0 for darkness. White (nothing wanted) keeps the id, as lightGoal keeps the colour.
 local function wantId(layer, i, light)
 	if light and light ~= WHITE then
 		put(layer, (i - 1) * 4 + 4, (theme.glass[light] and light or 0) / 255)
@@ -222,7 +198,6 @@ local function cellGoals(wall, target, comparison, contact, cubes)
 	end
 end
 
--- Cubes on each ray of a wall, for walls that show counts; kept while the poses are the same.
 local function cubeCounts(wall, level, poses)
 	if wall.cubes_of ~= poses then
 		local items = {}
@@ -235,8 +210,6 @@ local function cubeCounts(wall, level, poses)
 	return wall.cubes
 end
 
--- display: { poses, evaluation } from game/play. focus: { piece, color } for the selected
--- piece, whose cast cells are outlined in its colour, or nil.
 function M.present(walls, display, focus)
 	local level = walls.level
 	local focus_pose = focus and display.poses[focus.piece]
@@ -259,7 +232,6 @@ function M.present(walls, display, focus)
 	end
 end
 
--- Applies display preferences: { high_contrast }.
 function M.configure(walls, prefs)
 	local style = prefs.high_contrast and "high_contrast" or "normal"
 	if walls.style == style then
@@ -280,8 +252,6 @@ function M.celebrate(walls)
 	end
 end
 
--- The side a wall should stand on, away from the camera at `eye`; the floor stays put, and
--- near the switch point a wall keeps its side.
 local function aimSide(wall, eye)
 	if wall.axis ~= 2 then
 		local e = eye[AXIS_NAMES[wall.axis]]
@@ -298,7 +268,6 @@ local function showSide(wall, side)
 	go.set(wall.mesh, "vertices", wall.buffers[side])
 end
 
--- A wall changing sides fades out, switches and fades back in.
 local function stepSide(wall, eye, k)
 	aimSide(wall, eye)
 	wall.opacity = motion.ease(wall.opacity, wall.goal_side == wall.side and 1 or 0, k)
@@ -307,7 +276,6 @@ local function stepSide(wall, eye, k)
 	end
 end
 
--- Moves a moving layer toward its goal by at most `step` and uploads it; it rests on arrival.
 local function easeLayer(layer, w, h, step)
 	if not layer.moving then
 		return
@@ -343,7 +311,6 @@ local function showFx(wall)
 	end
 end
 
--- Ends every fade, ease and pulse at once, as seen from `eye`, for a still picture.
 function M.finish(walls, eye)
 	for _, wall in pairs(walls.list) do
 		aimSide(wall, eye)
@@ -357,7 +324,6 @@ function M.finish(walls, eye)
 	end
 end
 
--- Advances fades, cell easing and pulses. eye: unit vector3 from the board toward the camera.
 function M.step(walls, dt, eye)
 	local k_fade = motion.blend(FADE_RATE, dt)
 	for _, wall in pairs(walls.list) do

@@ -1,4 +1,3 @@
--- Undo/redo over a list of immutable states.
 local hot = require "core.hot"
 local M = {}
 

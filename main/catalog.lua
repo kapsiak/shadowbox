@@ -1,9 +1,3 @@
--- Loads the level packs bundled under /levels (custom_resources): an index (levels/index.lua, or
--- levels/demo.lua in demo builds) lists the packs in order and optionally caps each pack's
--- levels (`limit = { [pack] = n }`); each pack's pack.lua lists its levels. levels/rules holds
--- the rule cards. Every loader takes `read` (resource path -> text or nil), sys.load_resource
--- by default. Every piece colour must be in every palette (view/theme), so none falls back to
--- a plain grey.
 local hot = require "core.hot"
 local level = require "core.level"
 local source_data = require "core.source"
@@ -75,7 +69,6 @@ local function loadPack(read, id, limit)
 	return pack
 end
 
--- The ids of the rule cards the catalog's levels use, in teaching order.
 function M.ruleIds(catalog)
 	local used = {}
 	for _, pack in ipairs(catalog.packs) do
@@ -98,9 +91,6 @@ function M.rulePath(id)
 	return ("/levels/rules/%s.lua"):format(id)
 end
 
--- The rule cards the catalog uses (game/lessons), each { id, title, text, touch, level } with
--- its scene as a level; `touch` is the text for touch screens where it differs.
--- Returns { [id] = card }, or nil and the first error.
 function M.loadRules(catalog, read)
 	read = read or defaultRead
 	local cards = {}
@@ -124,12 +114,10 @@ end
 
 M.SHOWCASE = "/levels/showcase.lua"
 
--- The level shown as a sculpture on the main menu, or nil and the error.
 function M.loadShowcase(read)
 	return loadLevel(read or defaultRead, M.SHOWCASE)
 end
 
--- Returns { packs = { { id, title, intro, levels, keys, paths } } }, or nil and the first error.
 function M.load(index_path, read)
 	read = read or defaultRead
 	local index, err = evalResource(read, index_path or M.INDEX)

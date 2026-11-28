@@ -1,12 +1,3 @@
--- The level select screen: one chapter (pack) per page, its levels on a winding trail, each
--- open level shown as a live 3D thumbnail. Tapping an open level plays it; dragging up and down
--- (with a fling on release) or the wheel scrolls; swiping sideways, the arrow keys flanking the
--- chapter dots under the title, the left and right keys, or a dot itself turn the page.
--- Implements the screen contract used by main.script. Thumbnails are still images (view/thumbs),
--- drawn once per layout, the ones in view first.
---
--- The layout is computed once per screen size and chapter and published with the scroll and
--- slide offsets, so scrolling moves one offset rather than rebuilding the page.
 local hot = require "core.hot"
 local select_layout = require "ui.select_layout"
 local hit = require "ui.hit"
@@ -22,21 +13,14 @@ local M = {}
 
 local SCROLL_RATE = 16
 local WHEEL_STEP = 0.08
--- A fling keeps the release speed and slows by FRICTION per second until below FLING_MIN
--- pixels per second; a release more than FLING_HOLD seconds after the last move does not fling.
 local FRICTION = 3.5
 local FLING_MIN = 40
 local FLING_HOLD = 0.08
--- A turned page slides in from this fraction of the screen width and settles at SLIDE_RATE; a
--- swipe turns the page once it has moved TURN_AT of the width.
 local SLIDE_FROM = 0.35
 local SLIDE_RATE = 14
 local TURN_AT = 0.12
 local KEY_STEPS = { orbit_left = -1, orbit_right = 1 }
 
--- boards: the saved boards by level key; pool: the board pool (view/board_pool); last: the
--- level last played ({ pack, index }) or nil, whose chapter opens first; atlas: the thumbnail
--- atlas (view/thumbs.createAtlas).
 function M.enter(catalog, saved, boards, pool, last, atlas)
 	cameras.clear("board")
 	return {
@@ -56,9 +40,6 @@ local function clamped(screen, scroll)
 	return math.max(0, math.min(screen.view.max_scroll, scroll))
 end
 
--- What each open level's thumbnail shows: a solved level its solved board (the player's if
--- they left it solved, else the level's own); an open level the board as the player left it,
--- or no pieces (the targets alone).
 local function thumbPoses(saved, level, state)
 	if state == "solved" and not (saved and rules.evaluate(level, { poses = saved }).solved) then
 		return level.solution
@@ -66,8 +47,6 @@ local function thumbPoses(saved, level, state)
 	return saved or {}
 end
 
--- The thumbnails of the page's open levels, those nearest the middle of the screen at the
--- current scroll first.
 local function thumbSpecs(screen, h)
 	local specs, distance = {}, {}
 	for _, node in ipairs(screen.view.nodes) do
@@ -83,8 +62,6 @@ local function thumbSpecs(screen, h)
 	return specs
 end
 
--- Lays out the page when the screen or the chapter changes; a chapter opens scrolled to the
--- current level when it holds it, else to its top.
 function M.layout(screen, info)
 	screen.info = info
 	screen.chapter = screen.chapter or select_layout.chapterOf(screen.catalog, screen.saved, screen.last, info.settings.open_all)
@@ -103,8 +80,6 @@ function M.layout(screen, info)
 	return screen.view
 end
 
--- The back key, fixed in its corner, and the chapter arrows, which scroll with the header;
--- built again only when the page or the scroll changes.
 local function buttons(screen)
 	local view, scroll = screen.view, screen.scroll
 	if not memo.changed(screen.button_inputs, view, scroll, screen.chapter) then
@@ -138,7 +113,6 @@ function M.button(screen, ev, intents)
 	end
 end
 
--- The chapter whose dot lies under (x, y), or nil.
 local function markAt(screen, x, y)
 	for _, mark in ipairs(screen.view.marks) do
 		if math.abs(x - mark.x) <= mark.hit / 2 and math.abs(y - screen.scroll - mark.y) <= mark.hit / 2 then
@@ -163,7 +137,6 @@ local function onTap(screen, g, intents)
 	end
 end
 
--- A drag follows the axis it first moves along: up and down scrolls, sideways turns the page.
 local function onDragMove(screen, g, intents)
 	screen.drag_axis = screen.drag_axis or (math.abs(g.dx) > math.abs(g.dy) and "x" or "y")
 	if screen.drag_axis == "x" then
@@ -201,7 +174,6 @@ local function openLevel(screen, key)
 	end
 end
 
--- Turns to `chapter` if it exists and differs; the new page slides in from the side it lies on.
 local function turnTo(screen, chapter)
 	if chapter == screen.chapter or not screen.catalog.packs[chapter] then
 		return false
@@ -213,7 +185,6 @@ local function turnTo(screen, chapter)
 	return true
 end
 
--- Applies one intent; returns a request for the app (see main.script) or nil.
 function M.apply(screen, intent, dt)
 	local kind = intent.kind
 	if kind == "back" then

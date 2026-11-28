@@ -1,6 +1,3 @@
--- The live scene on a rule card: the card's level, solved, on a board from the pool. It stands
--- far below the play board, beyond any other camera's reach, and its own camera ("card" in
--- view/cameras) draws it into the card's scene rectangle after the GUI.
 local hot = require "core.hot"
 local board_view = require "view.board_view"
 local board_pool = require "view.board_pool"
@@ -15,7 +12,6 @@ local YAW, PITCH = math.rad(-38), math.rad(-26)
 local SWAY, SWAY_RATE = math.rad(22), 0.45
 local FOV = 0.5
 local FILL = 1.3
--- Cubes are partly see-through so the walls, the subject of every card, stay readable.
 local XRAY = 0.27
 local GROW_RATE = 9
 
@@ -40,7 +36,6 @@ local function show(scene, level)
 	board_view.present(scene.slot.board, { poses = level.solution, evaluation = evaluation })
 end
 
--- level: the card's scene, or nil to show none; rect: { x, y, w, h } (centre) in window pixels.
 function M.present(scene, level, rect, dt, prefs)
 	if level ~= scene.level then
 		M.release(scene)

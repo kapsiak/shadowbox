@@ -1,8 +1,3 @@
--- Draws the sheet layout published in ui/models ("panel"): an optional dimmed backdrop and
--- card, a title, a heading, and buttons, toggles and sliders. Also draws the screen-wide fade
--- ("fade", a number in [0, 1]) used for transitions, on top of everything. Draws only when the
--- layout (the same table while unchanged), the fade or an easing item changes; once hidden its
--- nodes are disabled.
 local models = require "ui.models"
 local motion = require "view.motion"
 local memo = require "core.memo"
@@ -21,7 +16,6 @@ local DANGER, WHITE, DIM, FADE = theme.vec(ui.danger), theme.vec(ui.white), them
 local EASE_RATE = 14
 local withAlpha, place, writeText, placeBar = draw.withAlpha, draw.place, draw.setText, draw.placeBar
 
--- Nodes start disabled; drawing enables those a sheet uses.
 local function box(image, sliced)
 	local node = gui.new_box_node(vmath.vector3(), vmath.vector3(1, 1, 0))
 	gui.set_enabled(node, false)
@@ -43,12 +37,10 @@ local function text(font)
 	return node
 end
 
--- A bar with chamfered corners (draw.placeBar).
 local function bar()
 	return box("key", true)
 end
 
--- The most segments a choice, tabs or keys row can have: each item keeps nodes for this many.
 local MAX_SEGMENTS = 5
 
 local function createItem()
@@ -84,8 +76,6 @@ local function enableItem(item, enabled, control)
 	end
 end
 
--- Items are pooled by their position on the sheet, so the node count stays bounded by the
--- largest sheet; a slot taken by a different item forgets the old one's eased state.
 -- New nodes draw above older ones, so the fade is raised over each new item.
 local function slotFor(self, i, id)
 	local item = self.items[i]
@@ -100,13 +90,11 @@ local function slotFor(self, i, id)
 	return item
 end
 
--- A small key on its lip: white, or coral where it would sit on a white row.
 local function drawKnob(item, x, y, w, h, a, primary)
 	placeBar(item.knob_shadow, x, y - h * LIFT, w, h, withAlpha(primary and PRIMARY_SHADOW or SHADOW, a))
 	placeBar(item.knob, x, y, w, h, withAlpha(primary and PRIMARY or WHITE, a))
 end
 
--- Segmented control: a track with the selected segment raised as a white key.
 local function drawSegments(item, spec, a)
 	local n = #spec.segments
 	local seg_w = spec.track_w / n
@@ -131,7 +119,6 @@ local function drawSegments(item, spec, a)
 	end
 end
 
--- Keycaps: a small white key per action with its key on it; the one waiting for a key is coral.
 local function drawKeys(item, spec, a)
 	local n = #spec.segments
 	local seg_w = spec.track_w / n

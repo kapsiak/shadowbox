@@ -1,34 +1,9 @@
--- Turns device-agnostic raw input events into gestures. Pure: no Defold APIs.
---
--- Raw events:
---   { kind = "pointer", button = "primary"|"secondary", x, y, pressed, released }
---   { kind = "touches", points = { { id, x, y, pressed, released }, ... } }
---   { kind = "wheel", amount, start }
---   { kind = "key", key, name, pressed, released }    key: the physical key; name: its action or nil
---   { kind = "hover", x, y }
---   { kind = "blur" }    the window lost focus, so held keys and buttons will not report release
--- Gestures:
---   press { button, x, y } (a pointer went down), tap { button, x, y }
---   drag_start { button, x, y, touch }, drag_move { button, x, y, dx, dy, multi }, drag_end { button, x, y }
---   two_finger { scale, twist, dx, dy, start }  relative scale, twist angle (radians) and the
---                                       pair's midpoint movement since the last event; `start`
---                                       marks a pair's first
---   second_up                           a finger other than the first lifted
---   wheel { amount, start } (start: the first step of a scroll gesture), key { key, name, pressed, released }, hover { x, y } (pointer moved, no button)
---   blur (as the raw event)
---   drag_cancel { button }        a second finger landed with the first (a pinch, not a drag)
--- Raw events may carry `t`, the time in seconds they arrived.
---
 -- On touch devices the first finger also arrives as the primary pointer; `multi` marks pointer
 -- moves made while two or more fingers are down, so receivers can treat them as part of a pinch.
--- Fingers landing within PAIR_WINDOW seconds of each other make a pinch: whatever the first one
--- started is cancelled and it reports nothing more until it lifts.
 local hot = require "core.hot"
 local M = {}
 
 local PAIR_WINDOW = 0.15
--- A finger lifting rolls a little: a drag ends where the pointer rested SETTLE seconds before
--- release if it moved at most SLIP drag thresholds since.
 local SETTLE = 0.1
 local SLIP = 2
 local TRAIL = 8
@@ -42,7 +17,6 @@ local function moved(rec, p)
 	return mx * mx + my * my >= rec.threshold * rec.threshold
 end
 
--- Keeps the pointer's last TRAIL positions and times, in a ring.
 local function remember(p, t, x, y)
 	local trail = p.trail
 	trail.at = trail.at % TRAIL + 1
@@ -51,8 +25,6 @@ local function remember(p, t, x, y)
 	slot.t, slot.x, slot.y = t, x, y
 end
 
--- Where a drag released at time `now` ends: where it rested SETTLE seconds before, if it has
--- slipped only a little since; otherwise where it last moved.
 local function settled(rec, p, now)
 	local rest
 	for _, slot in ipairs(p.trail) do
@@ -142,7 +114,6 @@ local function track(rec, t, now)
 	return known
 end
 
--- The primary pointer reports nothing more until it lifts; a drag it started is cancelled.
 local function cancelPrimary(rec, out)
 	local p = rec.pointers.primary
 	if p and not p.cancelled then
@@ -200,7 +171,6 @@ local function onTouches(rec, ev, out)
 	rec.pair = pair
 end
 
--- Feeds one raw event; returns the gestures it completes, in order.
 function M.feed(rec, ev)
 	local out = {}
 	if ev.kind == "pointer" then

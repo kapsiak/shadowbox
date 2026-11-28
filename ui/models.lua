@@ -20,7 +20,6 @@ function M.pressed(name, id)
 	table.insert(presses[name], id)
 end
 
--- Returns and clears the presses since the last call.
 function M.takePresses(name)
 	local list = presses[name]
 	if not list or #list == 0 then

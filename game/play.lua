@@ -1,7 +1,3 @@
--- A play session: what the player is doing to a level. Pure Lua.
--- Committed facts live in the history; a drag is a preview that commits only on drop. Pieces
--- in the tray can be turned too: `held` keeps their orientations for the session, and a drag
--- from the tray starts from them.
 local hot = require "core.hot"
 local rules = require "core.rules"
 local state = require "core.state"
@@ -13,8 +9,6 @@ local shape = require "core.shape"
 
 local M = {}
 
--- Tried in order when a turned piece does not fit where it is: every offset within reach,
--- nearest first, then up before level before down.
 local KICKS = {}
 local KICK_REACH = 3
 for x = -KICK_REACH, KICK_REACH do
@@ -40,8 +34,6 @@ table.sort(KICKS, function(a, b)
 	return a[3] < b[3]
 end)
 
--- The state holding those of `poses` ({ [piece_id] = pose }) that fit the level; the rest
--- are left in the tray.
 function M.fitting(level, poses)
 	local fit = state.new()
 	for id, pose in pairs(poses or {}) do
@@ -53,18 +45,15 @@ function M.fitting(level, poses)
 	return fit
 end
 
--- saved: optional poses from an earlier visit; poses that no longer fit are dropped.
 function M.new(level, saved)
 	return { level = level, history = history.new(M.fitting(level, saved)), selected = nil, drag = nil, held = {} }
 end
 
--- Returns to a session left earlier, keeping its history but nothing in hand or hinted.
 function M.resume(s)
 	s.selected, s.drag, s.hint = nil, nil, nil
 	return s
 end
 
--- True when any piece is on the board.
 function M.hasProgress(s)
 	return next(M.current(s).poses) ~= nil
 end
@@ -86,7 +75,6 @@ local function commit(s, command)
 	return true
 end
 
--- The grid indices of the cells piece `id` covers at `pose`, as a set.
 local function cellSet(level, id, pose)
 	local set = {}
 	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
@@ -95,7 +83,6 @@ local function cellSet(level, id, pose)
 	return set
 end
 
--- Whether piece `id` covers its solution cells, in whatever orientation.
 local function inPlace(level, poses, id)
 	local pose = poses[id]
 	if not pose then
@@ -110,7 +97,6 @@ local function inPlace(level, poses, id)
 	return true
 end
 
--- Whether piece `id` at `pose` covers any cell in `set`.
 local function overlaps(level, id, pose, set)
 	for _, c in ipairs(shape.cellsAt(level.pieces[id].shape, pose)) do
 		if set[grid.index(level.size, c)] then
@@ -120,7 +106,6 @@ local function overlaps(level, id, pose, set)
 	return false
 end
 
--- Pieces bottom up by their solution cells: lowest layer first, then more cells on that layer.
 local function hintOrder(level)
 	local keys, order = {}, {}
 	for id, pose in ipairs(level.solution) do
@@ -147,15 +132,11 @@ local function hintOrder(level)
 	return order
 end
 
--- The hinted piece while it is away from its solution cells, else nil.
 local function shownHint(s, poses)
 	local id = s.hint and s.hint.piece
 	return id and not inPlace(s.level, poses, id) and id or nil
 end
 
--- Hints the lowest piece not yet in its solution cells (level.solution): pieces in its way go
--- back to the tray as one undoable step, and a piece in the tray turns to its solution
--- orientation. While a hint is showing it stays. Returns whether a new hint was given.
 function M.hint(s)
 	local current = M.current(s)
 	if s.drag or shownHint(s, current.poses) then
@@ -192,7 +173,6 @@ function M.hint(s)
 	return true
 end
 
--- Index of the largest component of v, and that component's sign.
 function M.dominantAxis(v)
 	local axis = 1
 	for a = 2, 3 do
@@ -203,15 +183,7 @@ function M.dominantAxis(v)
 	return axis, v[axis] < 0 and -1 or 1
 end
 
--- Placement while dragging: every legal pose of the piece that touches something (the floor,
--- a wall behind the board or another piece) is a candidate. The face under the pointer names a
--- target, the free cell in front of it, and the candidate scoring lowest wins. Terms, in cells:
---   target  how far the grabbed cube lies from the target (at most REACH)
---   miss    how far it lies from the pointer ray, times MISS (breaks ties within a cell)
---   snug    faces touching the floor, walls or pieces per cube, times -FIT (fits are preferred)
 -- The result depends only on where the pointer is, so going back restores what was shown.
--- Before the pointer moves, a turned placed piece keeps its grabbed cube within PIVOT_REACH
--- cells of where it was.
 local REACH = 1.5
 local MISS = 0.3
 local FIT = 0.1
@@ -219,7 +191,6 @@ local PIVOT_REACH = 3
 
 local FACES = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } }
 
--- The middle of a piece in orientation n, from its anchor: the mean of its cubes' offsets.
 local function middleOf(level, id, n)
 	local m, form = { 0, 0, 0 }, level.pieces[id].shape.forms[n]
 	for _, c in ipairs(form) do
@@ -234,15 +205,10 @@ local function distance(a, b)
 	return math.sqrt((a[1] - b[1]) ^ 2 + (a[2] - b[2]) ^ 2 + (a[3] - b[3]) ^ 2)
 end
 
--- The side (-1 low, 1 high) of the x and z walls, which stand behind the board seen along `dir`.
 local function wallsBehind(dir)
 	return dir[1] > 0 and 1 or -1, dir[3] > 0 and 1 or -1
 end
 
--- Starts dragging `piece`. hit_cell is the board cell grabbed (nil when taken from the tray);
--- dir, the pointer ray's direction, tells which walls stand behind the board.
--- The grabbed cube sits at `offset` from the anchor; nudges add a `shift`. The preview is always
--- legal: with no candidate near it keeps the last one, and off the board that one is refused.
 function M.grab(s, piece, hit_cell, dir)
 	local from = M.current(s).poses[piece]
 	local drag = { piece = piece, from = from, orient = s.held[piece] or orient.identity, offset = { 0, 0, 0 },
@@ -260,7 +226,6 @@ function M.grab(s, piece, hit_cell, dir)
 	s.selected = piece
 end
 
--- The cells the other pieces occupy, for checking where `piece` may go.
 local function othersOf(s, piece)
 	return grid.occupancy(s.level, M.current(s).poses, piece)
 end
@@ -270,7 +235,6 @@ local function occupiedOf(s, d)
 	return d.occupied
 end
 
--- Faces of `cells` touching the floor, a wall behind the board or another piece, per cube.
 local function snugness(size, occupied, d, cells)
 	local faces = 0
 	for _, c in ipairs(cells) do
@@ -286,7 +250,6 @@ local function snugness(size, occupied, d, cells)
 	return faces / #cells
 end
 
--- The candidates for the drag's orientation: { pose, snug } for each legal pose touching something.
 local function candidatesOf(s, d)
 	local level, size = s.level, s.level.size
 	local occupied, form = occupiedOf(s, d), level.pieces[d.piece].shape
@@ -308,7 +271,6 @@ local function candidatesOf(s, d)
 	return list
 end
 
--- How far the point (x, y, z) lies from the pointer ray.
 local function offRay(d, x, y, z)
 	local origin, dir = d.origin, d.dir
 	local rx, ry, rz = x - origin[1], y - origin[2], z - origin[3]
@@ -317,14 +279,10 @@ local function offRay(d, x, y, z)
 	return math.sqrt(px * px + py * py + pz * pz)
 end
 
--- Where the grabbed cube is held in place before the pointer moves, if it is.
 local function heldAt(d)
 	return not d.dir and d.pivot
 end
 
--- Candidate `c`'s score, aimed by the pointer ray (d.origin, d.dir; d.surface: the surface it
--- meets), at where the grabbed cube is held, or while turning at the piece's middle as it was
--- (d.spin.center). Nil when out of reach.
 local function score(d, c)
 	local p, o = c.pose.cell, d.offset
 	if d.spin then
@@ -348,7 +306,6 @@ local function score(d, c)
 	return away + MISS * offRay(d, x, y, z) - FIT * c.snug
 end
 
--- The candidate scoring lowest, or nil when none is in reach.
 local function choose(d)
 	local best, best_score
 	for _, c in ipairs(d.candidates) do
@@ -360,7 +317,6 @@ local function choose(d)
 	return best
 end
 
--- Where the piece is aimed before it is made legal, for showing a refused turn.
 local function aimed(d)
 	local cell = {}
 	if d.spin then
@@ -376,8 +332,6 @@ local function aimed(d)
 	return cell
 end
 
--- The candidate as shown: the chosen pose moved by the drag's shift, refused if that is
--- illegal. The same table while nothing changes, so the display is not rebuilt.
 local function preview(s, d, pose, ok)
 	local sh = d.shift
 	if ok and (sh[1] ~= 0 or sh[2] ~= 0 or sh[3] ~= 0) then
@@ -392,9 +346,6 @@ local function preview(s, d, pose, ok)
 	return { pose = pose, ok = ok }
 end
 
--- With no candidate near, the last legal preview is kept, unless the piece has turned since:
--- then it shows where it is aimed, refused, so the turn is never hidden. Off the board the
--- last preview is refused.
 local function updateCandidate(s, d)
 	if not (d.dir or d.spin or heldAt(d)) then
 		return
@@ -410,16 +361,12 @@ local function updateCandidate(s, d)
 	end
 end
 
--- Moves the drag preview to follow a world-space pointer ray.
--- How far outside the board a pointer ray may pass and still aim at its nearest edge cell.
 local EDGE = 1
 
 local function noneSolid()
 	return false
 end
 
--- The surface the ray meets (core/raycast surface); a ray passing just beside the board meets
--- its nearest edge cell instead, so the board's rim is forgiving. Nil further out.
 local function surfaceOf(size, occupied, origin, dir)
 	local surface = raycast.surface(size, origin, dir, function(c)
 		return occupied[grid.index(size, c)] ~= nil
@@ -457,7 +404,6 @@ function M.dragTo(s, origin, dir)
 	updateCandidate(s, d)
 end
 
--- Row-major 3x3 rotations, as core/orient keeps them.
 local IDENTITY = { 1, 0, 0, 0, 1, 0, 0, 0, 1 }
 
 local function mul(a, b)
@@ -474,7 +420,6 @@ local function transpose(m)
 	return { m[1], m[4], m[7], m[2], m[5], m[8], m[3], m[6], m[9] }
 end
 
--- The rotation by `angle` radians about the unit vector `axis` (Rodrigues).
 local function rotation(axis, angle)
 	local x, y, z = axis[1], axis[2], axis[3]
 	local c, s = math.cos(angle), math.sin(angle)
@@ -491,11 +436,6 @@ local function apply(m, v)
 		m[7] * v[1] + m[8] * v[2] + m[9] * v[3] }
 end
 
--- Turns the dragged piece by `angle` radians about the world `axis` (a unit vector) through its
--- middle, which stays where it is shown. Its orientation is the nearest of the 24 to the turn so
--- far, placed nearest that middle; the rest of the turn is only shown (see `spinning`). The
--- grabbed cube turns with it. Returns whether that orientation changed. Needs a preview on the
--- board.
 function M.spin(s, axis, angle)
 	local d = s.drag
 	local c = d and d.candidate
@@ -523,16 +463,12 @@ function M.spin(s, axis, angle)
 	return true
 end
 
--- Ends free turning: the piece keeps its nearest orientation and follows the pointer again.
 function M.settle(s)
 	if s.drag then
 		s.drag.spin = nil
 	end
 end
 
--- While turning, how to show the dragged piece turning in place: the rotation still to show on
--- top of its orientation (row-major), the point it turns about (its middle when the turn began,
--- in world units), and how far the preview's middle lies from there. Nil otherwise.
 function M.spinning(s)
 	local d = s.drag
 	local sp = d and d.spin
@@ -545,14 +481,12 @@ function M.spinning(s)
 	return mul(mul(sp.free, sp.base), transpose(orient.matrix(c.pose.orient))), at, moved
 end
 
--- Abandons the drag: the piece stays as it was and the selection as it was before the grab.
 function M.cancel(s)
 	if s.drag then
 		s.selected, s.drag = s.drag.selected, nil
 	end
 end
 
--- Ends the drag: into the tray removes the piece, otherwise a legal preview is committed.
 function M.drop(s, into_tray)
 	local d = s.drag
 	s.drag = nil
@@ -578,8 +512,6 @@ local function turnDrag(s, d, axis, dir)
 	return true
 end
 
--- Turns the dragged piece about the cube under the pointer, or else the selected piece in
--- place (nudging it if it collides) or in the tray. Turns are quarter turns about a world axis.
 function M.turn(s, axis, dir)
 	if s.drag then
 		return turnDrag(s, s.drag, axis, dir)
@@ -602,7 +534,6 @@ function M.turn(s, axis, dir)
 	return false
 end
 
--- Moves the dragged preview, or else the selected piece, by `delta` cells along a world axis.
 function M.nudge(s, axis, delta)
 	local d = s.drag
 	if d then
@@ -619,7 +550,6 @@ function M.nudge(s, axis, delta)
 	return commit(s, { kind = "place", piece = s.selected, pose = { cell = cell, orient = pose.orient } })
 end
 
--- A tap on the already-selected piece, placed or in the tray, turns it; any other tap selects.
 function M.tap(s, piece)
 	if piece and piece == s.selected then
 		return M.turn(s, 2, 1)

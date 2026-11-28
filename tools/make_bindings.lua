@@ -1,7 +1,3 @@
--- Usage (from the project root): luajit tools/make_bindings.lua
--- Writes input/game.input_binding: every bindable key (input/controls) as its own action
--- "key_<name>", which input/actions maps to game actions through the player's bindings, and
--- the fixed mouse and touch triggers.
 package.path = "./?.lua;" .. package.path
 
 local controls = require "input.controls"

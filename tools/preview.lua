@@ -1,4 +1,3 @@
--- Usage (from the project root): luajit tools/preview.lua levels/<pack>/<level>.lua ...
 package.path = "./?.lua;" .. package.path
 
 local level = require "core.level"

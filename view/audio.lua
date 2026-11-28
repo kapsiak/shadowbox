@@ -1,5 +1,3 @@
--- Sound cues. Anything may cue a sound by name; cues are only recorded here and are played
--- by the outer loop at its sound phase, with the player's volumes.
 local M = {}
 
 local AUDIO = "/audio"
@@ -12,18 +10,14 @@ local queue, played = {}, {}
 local sound_gain, music_gain
 local focused = true
 
--- options: { gain = 0..1, pitch = playback speed }
 function M.cue(name, options)
 	queue[#queue + 1] = { name = name, options = options }
 end
 
--- The game is silent while its window is out of focus or minimised.
 function M.setFocused(value)
 	focused = value
 end
 
--- Plays queued cues once each per frame; prefs: { sound, music } volumes in [0, 1]. Does
--- nothing while no volume changes and nothing is queued.
 function M.flush(prefs)
 	local sfx, music = focused and prefs.sound or 0, focused and prefs.music or 0
 	if sound_gain ~= sfx or music_gain ~= music then

@@ -1,5 +1,3 @@
--- Usage (from the project root): luajit tools/solve.lua [-s] [-n limit] levels/<pack>/<level>.lua ...
--- Prints each level's difficulty profile; -s prints one summary line per level instead.
 package.path = "./?.lua;./tools/?.lua;" .. package.path
 
 local level = require "core.level"
@@ -27,8 +25,6 @@ local function totals(lvl, report)
 	return cubes, cands / #report.pieces
 end
 
--- Arithmetic a level asks of its count walls: the largest number shown and the share of
--- shown cells holding 2 or more. Nil without count walls.
 local function countLoad(lvl)
 	local top, shown, stacked = 0, 0, 0
 	for _, v in ipairs(lvl.views) do

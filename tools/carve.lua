@@ -1,13 +1,3 @@
--- Usage (from the project root):
---   luajit tools/carve.lua [-k min-max] [-t tries] [-o shown] [-n limit] [-r seed]
---                          [-f] [-g colour,... [-q opaque] [-m mixes]] sculpture.lua
--- Cuts a sculpture (a level file whose drawn cells may all share one letter; `views`, `walls`
--- and `rules` carry over; if `pieces` names a colour for each drawn letter, every piece is cut
--- inside one letter's region and takes its colour) into random pieces of min..max cubes, profiles each cut with the solver and prints
--- the best as level files: fewest solutions first, then the most search.
--- With -f, pieces are cut across regions and take the colour of most of their cubes.
--- With -g, all but `opaque` pieces become glass, each listed colour used once before repeats;
--- -m keeps only cuts with at least that many wall cells lit by a mix (a colour no piece has).
 package.path = "./?.lua;./tools/?.lua;" .. package.path
 
 local level = require "core.level"
@@ -58,7 +48,6 @@ local function neighbours(cells, at, i)
 	return out
 end
 
--- Cubes in each cell's connected one-colour blob.
 local function blobSizes(cells, at, region)
 	local size = {}
 	for i in ipairs(cells) do
@@ -80,8 +69,6 @@ local function blobSizes(cells, at, region)
 	return size
 end
 
--- Grows pieces from the most cornered free cell; nil if a piece cannot reach `min` cubes
--- (a blob smaller than `min` becomes one piece).
 local function cut(cells, at, region, min, max)
 	local owner, count, blob = {}, 0, blobSizes(cells, at, region)
 	local free = function(i, j)
@@ -128,8 +115,6 @@ local function cut(cells, at, region, min, max)
 	end
 end
 
--- Touching pieces get different colours. Each piece prefers the region colour most of its cubes
--- have, then the sculpture's other region colours, then the least used.
 local function colours(cells, at, owner, count, region)
 	local touching, votes, drawn = {}, {}, {}
 	for p = 1, count do
@@ -195,7 +180,6 @@ local function shuffled(n)
 	return out
 end
 
--- Opaque pieces get colour names; the rest become glass from `glass`, each colour once first.
 local function materials(names, count, glass, opaque)
 	if not glass then
 		return names

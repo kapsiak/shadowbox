@@ -1,11 +1,6 @@
--- Every keyboard action and the keys that can be bound. Pure data and lookups: one table drives
--- the key mapping (input/actions), key hints, the Keys settings and the input binding file
--- (tools/make_bindings.lua). Bindings in settings hold only the actions a player changed:
--- { [action id] = { key, ... } }.
 local hot = require "core.hot"
 local M = {}
 
--- `button`: the HUD button standing for the action; `fixed`: not rebindable.
 M.actions = {
 	{ id = "turn_left", label = "Turn left", keys = { "q" }, button = "turn_left" },
 	{ id = "turn_right", label = "Turn right", keys = { "e" }, button = "turn_right" },
@@ -43,7 +38,6 @@ for _, a in ipairs(M.actions) do
 	end
 end
 
--- The Keys settings: pages of rows, each row a label and the actions it binds.
 M.pages = {
 	{ id = "piece", label = "Piece", rows = {
 		{ "Turn", "turn_left", "turn_right" }, { "Tip", "tip_away", "tip_toward" },
@@ -58,7 +52,7 @@ M.pages = {
 	} },
 }
 
--- Bindable keys: name, Defold trigger, label. Escape stays with the menu (and cancels rebinding).
+-- Escape stays with the menu (and cancels rebinding).
 M.keys = {}
 local function key(name, trigger, label)
 	M.keys[#M.keys + 1] = { name = name, trigger = trigger, label = label }
@@ -101,7 +95,6 @@ function M.action(id)
 	return by_id[id]
 end
 
--- The action a HUD button stands for, or nil.
 function M.forButton(button)
 	return by_button[button]
 end
@@ -115,7 +108,6 @@ function M.keysOf(bindings, id)
 	return not a.fixed and bindings[id] or a.keys
 end
 
--- { [key name] = action id } for the player's bindings.
 function M.keymap(bindings)
 	local map = {}
 	for _, a in ipairs(M.actions) do
@@ -126,8 +118,6 @@ function M.keymap(bindings)
 	return map
 end
 
--- Bindings with `id` on `key` alone, taken from any action that had it (which may be left
--- without a key). Nil when the action or key cannot be bound.
 function M.rebind(bindings, id, key_name)
 	local a = by_id[id]
 	if not a or a.fixed or not key_labels[key_name] or key_name == "escape" then
@@ -161,7 +151,6 @@ local function sameKeys(a, b)
 	return true
 end
 
--- Only the bindings that differ from the defaults, with unknown actions and keys dropped.
 function M.changed(bindings)
 	local out = {}
 	for _, a in ipairs(M.actions) do

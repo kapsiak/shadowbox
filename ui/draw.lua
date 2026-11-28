@@ -1,4 +1,3 @@
--- Drawing helpers shared by the GUI scripts. Positions and sizes are screen pixels.
 local hot = require "core.hot"
 local M = {}
 
@@ -29,8 +28,6 @@ function M.setText(node, font, value, x, y, size, color, pivot)
 	gui.set_color(node, color)
 end
 
--- A sliced key node as a bar with chamfered corners cut in proportion to its height: the image
--- is sliced at its full height and scaled down, so even thin bars keep whole corners.
 function M.placeBar(node, x, y, w, h, color)
 	local k = h / M.KEY_SIZE
 	M.place(node, x, y, math.max(w, h) / k, M.KEY_SIZE, color)

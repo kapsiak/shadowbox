@@ -1,24 +1,16 @@
--- Places a sheet (ui/sheets) on screen. Pure: window pixels, origin bottom left.
--- Modal sheets sit centred on a card; others stack in the lower part of the screen, or, for a
--- `side` sheet on a wide screen, form a column on the left under a left-aligned heading.
 local hot = require "core.hot"
 local measure = require "ui.measure"
 local M = {}
 
 local ROW_DP = 54
 local WIDTH_DP = 380
--- The heading's mark (twice as wide as tall) and the gap after it, in ems of the heading.
 local MARK_EM, MARK_GAP = 2, 0.35
--- The fraction of the width the side column takes, leaving the rest to the scene.
 M.SIDE = 0.4
--- A rule card's scene, in rows; its paragraph's type size and line height, in rows.
 local SCENE_ROWS = 4.2
 local TEXT_SIZE, LINE = 0.36, 1.4
--- Labels' type size, in rows; headings' average character width, in ems (the title font is wider).
 local LABEL_SIZE = 0.36
 local HEADING_EM = 0.55
 
--- The height of a paragraph wrapped to `width`, with its own line breaks.
 local function paragraphHeight(text, width, size)
 	local per_line, lines = math.max(1, math.floor(width / (measure.EM * size))), 0
 	for line in (text .. "\n"):gmatch("(.-)\n") do
@@ -27,7 +19,6 @@ local function paragraphHeight(text, width, size)
 	return (lines + 0.4) * size * LINE
 end
 
--- Splits a row's width evenly among the items sharing it.
 local function spread(items, cx, width, gap)
 	local n = #items
 	local w = (width - gap * (n - 1)) / n
@@ -36,14 +27,10 @@ local function spread(items, cx, width, gap)
 	end
 end
 
--- Whether a side sheet stands in a column beside the scene rather than below it.
 function M.sideBySide(screen)
 	return screen.w > screen.h * 1.2
 end
 
--- screen: { w, h, scale, safe }. Returns { modal, card, title, scene, text, items } where each
--- item has x, y (centre), w, h, label_size, and for sliders the track's left edge and width;
--- scene is a rectangle { x, y, w, h } (centre) and text { text, x, y, w, size } a paragraph.
 function M.compute(screen, sheet)
 	local w, h = screen.w, screen.h
 	local short = math.min(w, h)
@@ -64,7 +51,6 @@ function M.compute(screen, sheet)
 	local content_h = rows * row + (rows - 1) * gap + title_h + scene_h + text_h
 	local pad = sheet.modal and row * 0.5 or 0
 
-	-- A side heading and its mark fit the column.
 	local heading_em = measure.width(sheet.heading or "x", 1, HEADING_EM) + MARK_EM + MARK_GAP
 	local heading_size = side and math.min(row * 1.3, width / heading_em) or row
 	local top
@@ -119,8 +105,6 @@ function M.compute(screen, sheet)
 		shared[#shared + 1] = placed
 		spread(shared, cx, width, gap)
 		if item.kind == "slider" or item.kind == "choice" or item.kind == "keys" then
-			-- The control takes what the label leaves (labels start 0.4 rows in), up to its usual
-			-- share of the row.
 			local label_end = row * 0.4 + measure.width(item.label, row * LABEL_SIZE) + row * 0.3
 			local share = item.segments and #item.segments > 3 and 0.58 or 0.5
 			local track = math.min(share, 0.95 - label_end / width)
@@ -133,14 +117,12 @@ function M.compute(screen, sheet)
 	return layout
 end
 
--- The index of the segment at screen x for a placed choice or tabs item.
 function M.segmentAt(item, x)
 	local n = #item.segments
 	local i = math.floor((x - item.track_x) / item.track_w * n) + 1
 	return math.max(1, math.min(n, i))
 end
 
--- The slider value at screen x for a placed slider item.
 function M.sliderValue(item, x)
 	local t = math.max(0, math.min(1, (x - item.track_x) / item.track_w))
 	return item.min + (item.max - item.min) * t

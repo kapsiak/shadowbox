@@ -1,5 +1,3 @@
--- The play screen: one level, its views, the HUD, and the input that drives them.
--- Implements the screen contract used by main.script (see there).
 local hot = require "core.hot"
 local play = require "game.play"
 local interpret = require "input.interpret"
@@ -23,26 +21,19 @@ local memo = require "core.memo"
 local M = {}
 
 local TRAY_BACKDROP = "/tray_backdrop#mesh"
--- A button's tooltip shows once the pointer has rested on it this long (desktop only: touch
--- does not hover), until it leaves or presses.
 local TIP_DELAY = 0.45
 
 local PEEK_RATE = 14
--- The chapter-complete card waits for the solve's celebration.
 local CHAPTER_DELAY = 1.2
 
 local LIFT_DP = 70
--- Tipping a dragged piece (input/interpret turnPiece): a quarter turn per TURN_DP of travel,
--- beginning once it has moved TIP_LOCK_DP.
 local TURN_DP = 80
 local TIP_LOCK_DP = 8
 
--- The button whose tooltip shows, or nil.
 local function shownTip(tip)
 	return tip and not tip.pressed and tip.t >= TIP_DELAY and tip.id or nil
 end
 
--- The tooltip for button `id`: its action and first key.
 local function tipFor(id, bindings)
 	local action = id and controls.forButton(id)
 	if not action then
@@ -56,10 +47,6 @@ local function toTable(v)
 	return { v.x, v.y, v.z }
 end
 
--- pool: the board pool (view/board_pool); factories: { tray_piece, glass_tray_piece } urls;
--- saved: the board as last left, or nil; session: this level's session from earlier in this
--- run, kept for its undo history, or nil; rules: the rule cards (catalog.loadRules); seen: the
--- card ids already seen. Cards the level uses and the player has not seen open first.
 function M.enter(pack, index, pool, factories, saved, session, rules, seen)
 	local lvl = pack.levels[index]
 	local slot = board_pool.acquire(pool, lvl)
@@ -92,18 +79,14 @@ function M.exit(screen)
 	models.publish("panel", nil)
 end
 
--- The level just solved completed its chapter for the first time; has_next: whether a chapter
--- follows.
 function M.chapterComplete(screen, has_next)
 	screen.chapter_wait, screen.has_next_chapter = CHAPTER_DELAY, has_next
 end
 
--- The board as it stands, for saving.
 function M.board(screen)
 	return play.current(screen.session).poses
 end
 
--- The HUD is laid out again only when something it depends on changes.
 function M.layout(screen, info)
 	local s, prefs = screen.session, info.settings
 	screen.info = info
@@ -127,8 +110,6 @@ function M.hit(screen, x, y)
 	return hit.find(screen.hud.buttons, x, y)
 end
 
--- HUD buttons act on press (held ones also on release); while a sheet is open, controls
--- belong to the sheet.
 function M.button(screen, ev, intents)
 	if #screen.sheets > 0 then
 		if ev.phase == "press" then
@@ -188,7 +169,6 @@ function M.gesture(screen, g, intents)
 	end, intents)
 end
 
--- Resolves a camera-relative direction name to a world axis and the sign it points along.
 local function cameraAxis(screen, about)
 	if about == "vertical" then
 		return 2, 1
@@ -201,8 +181,6 @@ local function cameraAxis(screen, about)
 	return play.dominantAxis(toTable(v))
 end
 
--- Turns the dragged piece about a grid axis (input/interpret spin): vertical, or for "right"
--- the horizontal axis nearest the camera's right. Returns whether its orientation changed.
 local function spinPiece(screen, intent)
 	local axis = { 0, 1, 0 }
 	if intent.about == "right" then
@@ -213,7 +191,6 @@ local function spinPiece(screen, intent)
 	return play.spin(screen.session, axis, intent.angle)
 end
 
--- Refused moves shake the piece they were aimed at; accepted ones play `cue`.
 local function respond(screen, done, cue)
 	if done then
 		audio.cue(cue)
@@ -249,7 +226,6 @@ local function giveHint(screen)
 	end
 end
 
--- Applies one intent; returns a request for the app (see main.script) or nil.
 function M.apply(screen, intent, dt)
 	local s, kind = screen.session, intent.kind
 	if kind == "sheet" and intent.id == "restart" then
@@ -338,7 +314,6 @@ function M.apply(screen, intent, dt)
 	end
 end
 
--- A wall chimes as it becomes matched, though not for walls already matched on arrival.
 local function cueWalls(screen, evaluation)
 	local arriving = screen.matched == nil
 	screen.matched = screen.matched or {}
