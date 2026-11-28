@@ -64,6 +64,26 @@ function M.apply(n, v)
 	}
 end
 
+-- The rotation matrix of orientation n, row-major (3x3 as 9 numbers); not to be changed.
+function M.matrix(n)
+	return matrices[n]
+end
+
+-- The orientation nearest the rotation matrix m (row-major): the one the least turn away.
+function M.nearest(m)
+	local best, best_trace = 1, -math.huge
+	for n, r in ipairs(matrices) do
+		local trace = 0
+		for i = 1, 9 do
+			trace = trace + r[i] * m[i]
+		end
+		if trace > best_trace then
+			best, best_trace = n, trace
+		end
+	end
+	return best
+end
+
 -- Rotates orientation n a quarter turn about a world axis (1=x, 2=y, 3=z), dir = 1 or -1.
 function M.turn(n, axis, dir)
 	return turns[n][axis][dir]

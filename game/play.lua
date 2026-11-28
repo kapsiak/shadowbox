@@ -203,18 +203,53 @@ function M.dominantAxis(v)
 	return axis, v[axis] < 0 and -1 or 1
 end
 
--- Starts dragging `piece`. hit_cell is the board cell grabbed (nil when taken from the tray).
---
--- While dragging, the piece rests against the surface under the pointer (a face of a piece,
--- the floor or a wall): the grabbed cube, at `offset` from the anchor, lines up with the
--- pointer and the piece's near side touches the surface. If that pose overlaps or leaves the
--- board, the nearest legal one wins. Nudges add a `shift`. Before the pointer moves, a placed
--- piece turns about the grabbed cube (`pivot`). The preview is always legal: with no legal
--- pose near it keeps the last one, and off the board that pose is marked refused.
-function M.grab(s, piece, hit_cell)
+-- Placement while dragging: every legal pose of the piece that touches something (the floor,
+-- a wall behind the board or another piece) is a candidate. The face under the pointer names a
+-- target, the free cell in front of it, and the candidate scoring lowest wins. Terms, in cells:
+--   target  how far the grabbed cube lies from the target (at most REACH)
+--   miss    how far it lies from the pointer ray, times MISS (breaks ties within a cell)
+--   snug    faces touching the floor, walls or pieces per cube, times -FIT (fits are preferred)
+-- The result depends only on where the pointer is, so going back restores what was shown.
+-- Before the pointer moves, a turned placed piece keeps its grabbed cube within PIVOT_REACH
+-- cells of where it was.
+local REACH = 1.5
+local MISS = 0.3
+local FIT = 0.1
+local PIVOT_REACH = 3
+
+local FACES = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } }
+
+-- The middle of a piece in orientation n, from its anchor: the mean of its cubes' offsets.
+local function middleOf(level, id, n)
+	local m, form = { 0, 0, 0 }, level.pieces[id].shape.forms[n]
+	for _, c in ipairs(form) do
+		for a = 1, 3 do
+			m[a] = m[a] + c[a] / #form
+		end
+	end
+	return m
+end
+
+local function distance(a, b)
+	return math.sqrt((a[1] - b[1]) ^ 2 + (a[2] - b[2]) ^ 2 + (a[3] - b[3]) ^ 2)
+end
+
+-- The side (-1 low, 1 high) of the x and z walls, which stand behind the board seen along `dir`.
+local function wallsBehind(dir)
+	return dir[1] > 0 and 1 or -1, dir[3] > 0 and 1 or -1
+end
+
+-- Starts dragging `piece`. hit_cell is the board cell grabbed (nil when taken from the tray);
+-- dir, the pointer ray's direction, tells which walls stand behind the board.
+-- The grabbed cube sits at `offset` from the anchor; nudges add a `shift`. The preview is always
+-- legal: with no candidate near it keeps the last one, and off the board that one is refused.
+function M.grab(s, piece, hit_cell, dir)
 	local from = M.current(s).poses[piece]
 	local drag = { piece = piece, from = from, orient = s.held[piece] or orient.identity, offset = { 0, 0, 0 },
-		shift = { 0, 0, 0 }, axis = 2 }
+		shift = { 0, 0, 0 }, axis = 2, selected = s.selected, wall_x = -1, wall_z = -1 }
+	if dir then
+		drag.wall_x, drag.wall_z = wallsBehind(dir)
+	end
 	if from and hit_cell then
 		drag.orient = from.orient
 		drag.offset = { hit_cell[1] - from.cell[1], hit_cell[2] - from.cell[2], hit_cell[3] - from.cell[3] }
@@ -230,80 +265,291 @@ local function othersOf(s, piece)
 	return grid.occupancy(s.level, M.current(s).poses, piece)
 end
 
--- How far a preview may move sideways from where it is aimed to become legal.
-local SIDEWAYS = 2
+local function occupiedOf(s, d)
+	d.occupied = d.occupied or othersOf(s, d.piece)
+	return d.occupied
+end
 
--- The legal pose nearest `base`: each step out along the surface normal or sideways costs
--- one, and at equal cost stepping out wins. Nil if none is near.
-local function nearestLegal(s, d, base, normal)
-	local occupied = othersOf(s, d.piece)
-	local a = M.dominantAxis(normal)
-	local u, w = a % 3 + 1, (a + 1) % 3 + 1
-	local reach = math.max(s.level.size[1], s.level.size[2], s.level.size[3])
-	for cost = 0, reach + SIDEWAYS do
-		for r = 0, math.min(cost, SIDEWAYS) do
-			local k = cost - r
-			for du = -r, r do
-				local rest = r - math.abs(du)
-				for _, dw in ipairs(rest == 0 and { 0 } or { -rest, rest }) do
-					local cell = { base[1] + normal[1] * k, base[2] + normal[2] * k, base[3] + normal[3] * k }
-					cell[u], cell[w] = cell[u] + du, cell[w] + dw
-					local pose = { cell = cell, orient = d.orient }
-					if rules.checkPlace(s.level, occupied, d.piece, pose) then
-						return { pose = pose, ok = true }
+-- Faces of `cells` touching the floor, a wall behind the board or another piece, per cube.
+local function snugness(size, occupied, d, cells)
+	local faces = 0
+	for _, c in ipairs(cells) do
+		for _, f in ipairs(FACES) do
+			local m = { c[1] + f[1], c[2] + f[2], c[3] + f[3] }
+			if grid.contains(size, m) then
+				faces = faces + (occupied[grid.index(size, m)] and 1 or 0)
+			elseif m[2] < 0 or (f[1] ~= 0 and f[1] == d.wall_x) or (f[3] ~= 0 and f[3] == d.wall_z) then
+				faces = faces + 1
+			end
+		end
+	end
+	return faces / #cells
+end
+
+-- The candidates for the drag's orientation: { pose, snug } for each legal pose touching something.
+local function candidatesOf(s, d)
+	local level, size = s.level, s.level.size
+	local occupied, form = occupiedOf(s, d), level.pieces[d.piece].shape
+	local list = {}
+	d.middle = middleOf(level, d.piece, d.orient)
+	for x = 0, size[1] - 1 do
+		for y = 0, size[2] - 1 do
+			for z = 0, size[3] - 1 do
+				local pose = { cell = { x, y, z }, orient = d.orient }
+				if rules.checkPlace(level, occupied, d.piece, pose) then
+					local snug = snugness(size, occupied, d, shape.cellsAt(form, pose))
+					if snug > 0 then
+						list[#list + 1] = { pose = pose, snug = snug }
 					end
 				end
 			end
 		end
 	end
+	return list
+end
+
+-- How far the point (x, y, z) lies from the pointer ray.
+local function offRay(d, x, y, z)
+	local origin, dir = d.origin, d.dir
+	local rx, ry, rz = x - origin[1], y - origin[2], z - origin[3]
+	local t = rx * dir[1] + ry * dir[2] + rz * dir[3]
+	local px, py, pz = rx - t * dir[1], ry - t * dir[2], rz - t * dir[3]
+	return math.sqrt(px * px + py * py + pz * pz)
+end
+
+-- Where the grabbed cube is held in place before the pointer moves, if it is.
+local function heldAt(d)
+	return not d.dir and d.pivot
+end
+
+-- Candidate `c`'s score, aimed by the pointer ray (d.origin, d.dir; d.surface: the surface it
+-- meets), at where the grabbed cube is held, or while turning at the piece's middle as it was
+-- (d.spin.center). Nil when out of reach.
+local function score(d, c)
+	local p, o = c.pose.cell, d.offset
+	if d.spin then
+		local m = d.middle
+		local away = distance({ p[1] + m[1] + 0.5, p[2] + m[2] + 0.5, p[3] + m[3] + 0.5 }, d.spin.center)
+		return away <= PIVOT_REACH and away - FIT * c.snug or nil
+	end
+	local x, y, z = p[1] + o[1] + 0.5, p[2] + o[2] + 0.5, p[3] + o[3] + 0.5
+	local held = heldAt(d)
+	local target = held or d.surface and d.surface.cell
+	if not target then
+		return nil
+	end
+	local away = math.sqrt((x - target[1] - 0.5) ^ 2 + (y - target[2] - 0.5) ^ 2 + (z - target[3] - 0.5) ^ 2)
+	if held then
+		return away <= PIVOT_REACH and away - FIT * c.snug or nil
+	end
+	if away > REACH then
+		return nil
+	end
+	return away + MISS * offRay(d, x, y, z) - FIT * c.snug
+end
+
+-- The candidate scoring lowest, or nil when none is in reach.
+local function choose(d)
+	local best, best_score
+	for _, c in ipairs(d.candidates) do
+		local value = score(d, c)
+		if value and (not best_score or value < best_score) then
+			best, best_score = c, value
+		end
+	end
+	return best
 end
 
 -- Where the piece is aimed before it is made legal, for showing a refused turn.
-local function aimed(s, d)
-	local surface = d.surface
+local function aimed(d)
 	local cell = {}
-	for b = 1, 3 do
-		cell[b] = (surface and surface.cell[b] or d.pivot[b]) - d.offset[b] + d.shift[b]
+	if d.spin then
+		for b = 1, 3 do
+			cell[b] = math.floor(d.spin.center[b] - d.middle[b]) + d.shift[b]
+		end
+		return cell
 	end
-	if surface then
-		local lo, hi = shape.bounds(s.level.pieces[d.piece].shape.forms[d.orient])
-		local a = d.axis
-		cell[a] = surface.cell[a] - (surface.normal[a] > 0 and lo[a] or hi[a]) + d.shift[a]
+	local base = heldAt(d) or d.surface and d.surface.cell
+	for b = 1, 3 do
+		cell[b] = base[b] - d.offset[b] + d.shift[b]
 	end
 	return cell
 end
 
-local function aim(s, d)
-	return nearestLegal(s, d, aimed(s, d), d.surface and d.surface.normal or { 0, 1, 0 })
+-- The candidate as shown: the chosen pose moved by the drag's shift, refused if that is
+-- illegal. The same table while nothing changes, so the display is not rebuilt.
+local function preview(s, d, pose, ok)
+	local sh = d.shift
+	if ok and (sh[1] ~= 0 or sh[2] ~= 0 or sh[3] ~= 0) then
+		local c = pose.cell
+		pose = { cell = { c[1] + sh[1], c[2] + sh[2], c[3] + sh[3] }, orient = pose.orient }
+		ok = rules.checkPlace(s.level, occupiedOf(s, d), d.piece, pose) ~= nil
+	end
+	local last = d.candidate
+	if last and last.ok == ok and state.samePose(last.pose, pose) then
+		return last
+	end
+	return { pose = pose, ok = ok }
 end
 
--- The last legal preview is kept while nothing legal is near, unless the piece has turned
--- since: then it shows where it is aimed, refused, so the turn is never hidden.
+-- With no candidate near, the last legal preview is kept, unless the piece has turned since:
+-- then it shows where it is aimed, refused, so the turn is never hidden. Off the board the
+-- last preview is refused.
 local function updateCandidate(s, d)
-	if d.off then
-		d.candidate = d.candidate and { pose = d.candidate.pose, ok = false }
-	elseif d.surface or d.pivot then
-		local kept = d.candidate and d.candidate.ok and d.candidate.pose.orient == d.orient and d.candidate
-		d.candidate = aim(s, d) or kept or { pose = { cell = aimed(s, d), orient = d.orient }, ok = false }
+	if not (d.dir or d.spin or heldAt(d)) then
+		return
+	end
+	d.candidates = d.candidates or candidatesOf(s, d)
+	local choice, last = choose(d), d.candidate
+	if choice then
+		d.candidate = preview(s, d, choice.pose, true)
+	elseif d.off then
+		d.candidate = last and preview(s, d, last.pose, false)
+	elseif not (last and last.ok and last.pose.orient == d.orient) then
+		d.candidate = preview(s, d, { cell = aimed(d), orient = d.orient }, false)
 	end
 end
 
 -- Moves the drag preview to follow a world-space pointer ray.
-function M.dragTo(s, origin, dir)
-	local d = s.drag
-	if not d then
-		return
-	end
-	local size = s.level.size
-	local occupied = grid.occupancy(s.level, M.current(s).poses, d.piece)
-	d.surface = raycast.surface(size, origin, dir, function(c)
+-- How far outside the board a pointer ray may pass and still aim at its nearest edge cell.
+local EDGE = 1
+
+local function noneSolid()
+	return false
+end
+
+-- The surface the ray meets (core/raycast surface); a ray passing just beside the board meets
+-- its nearest edge cell instead, so the board's rim is forgiving. Nil further out.
+local function surfaceOf(size, occupied, origin, dir)
+	local surface = raycast.surface(size, origin, dir, function(c)
 		return occupied[grid.index(size, c)] ~= nil
 	end)
+	if surface then
+		return surface
+	end
+	local wide = { size[1] + 2 * EDGE, size[2] + 2 * EDGE, size[3] + 2 * EDGE }
+	local edge = raycast.surface(wide, { origin[1] + EDGE, origin[2] + EDGE, origin[3] + EDGE }, dir, noneSolid)
+	if not edge then
+		return nil
+	end
+	local cell = {}
+	for a = 1, 3 do
+		cell[a] = math.max(0, math.min(size[a] - 1, edge.cell[a] - EDGE))
+	end
+	return { cell = cell, normal = edge.normal }
+end
+
+function M.dragTo(s, origin, dir)
+	local d = s.drag
+	if not d or d.spin then
+		return
+	end
+	d.surface = surfaceOf(s.level.size, occupiedOf(s, d), origin, dir)
 	d.off = d.surface == nil
 	if d.surface then
 		d.axis = M.dominantAxis(d.surface.normal)
 	end
+	local wall_x, wall_z = wallsBehind(dir)
+	if wall_x ~= d.wall_x or wall_z ~= d.wall_z then
+		d.wall_x, d.wall_z, d.candidates = wall_x, wall_z, nil
+	end
+	d.origin, d.dir = origin, dir
 	updateCandidate(s, d)
+end
+
+-- Row-major 3x3 rotations, as core/orient keeps them.
+local IDENTITY = { 1, 0, 0, 0, 1, 0, 0, 0, 1 }
+
+local function mul(a, b)
+	local r = {}
+	for i = 0, 2 do
+		for j = 1, 3 do
+			r[i * 3 + j] = a[i * 3 + 1] * b[j] + a[i * 3 + 2] * b[3 + j] + a[i * 3 + 3] * b[6 + j]
+		end
+	end
+	return r
+end
+
+local function transpose(m)
+	return { m[1], m[4], m[7], m[2], m[5], m[8], m[3], m[6], m[9] }
+end
+
+-- The rotation by `angle` radians about the unit vector `axis` (Rodrigues).
+local function rotation(axis, angle)
+	local x, y, z = axis[1], axis[2], axis[3]
+	local c, s = math.cos(angle), math.sin(angle)
+	local t = 1 - c
+	return {
+		t * x * x + c, t * x * y - s * z, t * x * z + s * y,
+		t * x * y + s * z, t * y * y + c, t * y * z - s * x,
+		t * x * z - s * y, t * y * z + s * x, t * z * z + c,
+	}
+end
+
+local function apply(m, v)
+	return { m[1] * v[1] + m[2] * v[2] + m[3] * v[3], m[4] * v[1] + m[5] * v[2] + m[6] * v[3],
+		m[7] * v[1] + m[8] * v[2] + m[9] * v[3] }
+end
+
+-- Turns the dragged piece by `angle` radians about the world `axis` (a unit vector) through its
+-- middle, which stays where it is shown. Its orientation is the nearest of the 24 to the turn so
+-- far, placed nearest that middle; the rest of the turn is only shown (see `spinning`). The
+-- grabbed cube turns with it. Returns whether that orientation changed. Needs a preview on the
+-- board.
+function M.spin(s, axis, angle)
+	local d = s.drag
+	local c = d and d.candidate
+	if not c then
+		return false
+	end
+	if not d.spin then
+		local base, p = orient.matrix(d.orient), c.pose.cell
+		local m = middleOf(s.level, d.piece, c.pose.orient)
+		local center = { p[1] + m[1] + 0.5, p[2] + m[2] + 0.5, p[3] + m[3] + 0.5 }
+		d.spin = { free = IDENTITY, base = base, grip = apply(transpose(base), d.offset), center = center }
+	end
+	local sp = d.spin
+	sp.free = mul(rotation(axis, angle), sp.free)
+	local n = orient.nearest(mul(sp.free, sp.base))
+	if n == d.orient then
+		return false
+	end
+	local offset = apply(orient.matrix(n), sp.grip)
+	for a = 1, 3 do
+		offset[a] = math.floor(offset[a] + 0.5)
+	end
+	d.orient, d.offset, d.candidates = n, offset, nil
+	updateCandidate(s, d)
+	return true
+end
+
+-- Ends free turning: the piece keeps its nearest orientation and follows the pointer again.
+function M.settle(s)
+	if s.drag then
+		s.drag.spin = nil
+	end
+end
+
+-- While turning, how to show the dragged piece turning in place: the rotation still to show on
+-- top of its orientation (row-major), the point it turns about (its middle when the turn began,
+-- in world units), and how far the preview's middle lies from there. Nil otherwise.
+function M.spinning(s)
+	local d = s.drag
+	local sp = d and d.spin
+	local c = sp and d.candidate
+	if not c then
+		return nil
+	end
+	local p, m, at = c.pose.cell, middleOf(s.level, d.piece, c.pose.orient), sp.center
+	local moved = { p[1] + m[1] + 0.5 - at[1], p[2] + m[2] + 0.5 - at[2], p[3] + m[3] + 0.5 - at[3] }
+	return mul(mul(sp.free, sp.base), transpose(orient.matrix(c.pose.orient))), at, moved
+end
+
+-- Abandons the drag: the piece stays as it was and the selection as it was before the grab.
+function M.cancel(s)
+	if s.drag then
+		s.selected, s.drag = s.drag.selected, nil
+	end
 end
 
 -- Ends the drag: into the tray removes the piece, otherwise a legal preview is committed.
@@ -324,8 +570,10 @@ function M.drop(s, into_tray)
 end
 
 local function turnDrag(s, d, axis, dir)
+	d.spin = nil
 	d.orient = orient.turn(d.orient, axis, dir)
 	d.offset = orient.apply(orient.turn(orient.identity, axis, dir), d.offset)
+	d.candidates = nil
 	updateCandidate(s, d)
 	return true
 end

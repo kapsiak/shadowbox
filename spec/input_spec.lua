@@ -57,16 +57,16 @@ end)
 describe("gestures", function()
 	it("reports a short press as a tap", function()
 		local out = feedAll(gestures.new(10), { pointer(0, 0, { pressed = true }), pointer(3, 0, { released = true }) })
-		assert.same({ "tap" }, kinds(out))
+		assert.same({ "press", "tap" }, kinds(out))
 	end)
 
 	it("reports movement past the threshold as a drag, ending where it last moved", function()
 		local out = feedAll(gestures.new(10), {
 			pointer(0, 0, { pressed = true }), pointer(20, 0), pointer(25, 0, { released = true }),
 		})
-		assert.same({ "drag_start", "drag_move", "drag_end" }, kinds(out))
-		assert.equal(20, out[3].x)
-		assert.equal(20, out[2].dx)
+		assert.same({ "press", "drag_start", "drag_move", "drag_end" }, kinds(out))
+		assert.equal(20, out[4].x)
+		assert.equal(20, out[3].dx)
 	end)
 
 	local function touches(...)
@@ -87,8 +87,9 @@ describe("gestures", function()
 			touches({ id = 1, x = 0, y = 0 }, { id = 2, x = 200, y = 0 }),
 			touches({ id = 1, x = 0, y = 0 }, { id = 2, x = 200, y = 0, released = true }),
 		})
-		assert.same({ "second_move", "two_finger", "second_up" }, kinds(pinched))
-		assert.equal(2, pinched[2].scale)
+		assert.same({ "two_finger", "second_up" }, kinds(pinched))
+		assert.equal(2, pinched[1].scale)
+		assert.equal(50, pinched[1].dx)
 	end)
 
 	it("keeps a drag alive while a second button is clicked", function()
@@ -98,7 +99,7 @@ describe("gestures", function()
 			{ kind = "pointer", button = "secondary", x = 30, y = 0, released = true },
 			pointer(40, 0), pointer(40, 0, { released = true }),
 		})
-		assert.same({ "drag_start", "drag_move", "tap", "drag_move", "drag_end" }, kinds(out))
+		assert.same({ "press", "drag_start", "drag_move", "press", "tap", "drag_move", "drag_end" }, kinds(out))
 	end)
 end)
 
@@ -156,19 +157,32 @@ describe("interpret", function()
 		assert.equal(3, out[1].piece)
 	end)
 
-	it("turns a dragged piece a step per swipe of a second finger, and back", function()
+	it("turns a dragged piece about one axis per touch, holding it still meanwhile", function()
 		local state, out = interpret.new(100), {}
-		state.swipe_step = 10
-		interpret.gesture(state, { kind = "drag_start", button = "primary", x = 50, y = 50 }, function() return { piece = 1 } end, out)
-		for _, d in ipairs({ { 12, 4 }, { 10, 9 }, { -15, 0 }, "up", { 3, 11 } }) do
-			local g = d == "up" and { kind = "second_up" } or { kind = "second_move", dx = d[1], dy = d[2] }
-			interpret.gesture(state, g, nil, out)
+		interpret.gesture(state, { kind = "drag_start", button = "primary", x = 0, y = 0 }, function() return { piece = 1 } end, out)
+		interpret.gesture(state, { kind = "drag_move", button = "primary", x = 5, y = 0, dx = 5, dy = 0, multi = true }, nil, out)
+		for _, step in ipairs({ { 0.1, 3 }, { 0.1, 0 }, { 0, 30 }, { 0.05, 0 } }) do
+			interpret.gesture(state, { kind = "two_finger", scale = 1, twist = step[1], dx = 0, dy = step[2] }, nil, out)
 		end
-		local turns = {}
-		for i = 2, #out do
-			turns[#turns + 1] = out[i].about .. out[i].dir
-		end
-		assert.same({ "vertical1", "vertical1", "vertical-1", "vertical-1", "right-1" }, turns)
+		interpret.gesture(state, { kind = "second_up" }, nil, out)
+		interpret.gesture(state, { kind = "drag_move", button = "primary", x = 20, y = 0, dx = 15, dy = 0 }, nil, out)
+		assert.same({ "grab", "spin", "spin", "spin_end", "drag" }, kinds(out))
+		assert.same({ "vertical", "vertical" }, { out[2].about, out[3].about })
+		assert.near(-0.2, out[2].angle, 1e-9)
+		assert.equal(15, out[5].x)
+	end)
+
+	it("tips a dragged piece while the right button drags", function()
+		local state, out = interpret.new(100), {}
+		state.turn_step = 80
+		interpret.gesture(state, { kind = "drag_start", button = "primary", x = 0, y = 0 }, function() return { piece = 1 } end, out)
+		interpret.gesture(state, { kind = "drag_start", button = "secondary", x = 0, y = 0 }, nil, out)
+		interpret.gesture(state, { kind = "drag_move", button = "secondary", x = 0, y = -10, dx = 0, dy = -10 }, nil, out)
+		interpret.gesture(state, { kind = "drag_move", button = "primary", x = 0, y = -10, dx = 0, dy = -10 }, nil, out)
+		interpret.gesture(state, { kind = "drag_end", button = "secondary", x = 0, y = -10 }, nil, out)
+		assert.same({ "grab", "spin", "spin_end" }, kinds(out))
+		assert.equal("right", out[2].about)
+		assert.near(10 / 80 * math.pi / 2, out[2].angle, 1e-9)
 	end)
 
 	it("acts on keys and buttons alike; held actions let go on release or blur", function()

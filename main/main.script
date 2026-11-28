@@ -385,6 +385,7 @@ end
 function on_input(self, action_id, action)
 	local raw = actions.read(action_id, action, self.keymap)
 	if raw then
+		raw.t = self.time
 		self.raw_input[#self.raw_input + 1] = raw
 	end
 end

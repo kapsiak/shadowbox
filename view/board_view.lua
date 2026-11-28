@@ -108,6 +108,29 @@ function M.hide(view)
 	walls_view.hide(view.walls)
 end
 
+-- Shows `hint` ({ piece, pose } or nil) as a ghost: a hint, or where a turning piece will settle.
+function M.ghost(view, hint)
+	local shown = view.ghost.hint
+	if (hint and hint.piece) ~= (shown and shown.piece) or not state.samePose(hint and hint.pose, shown and shown.pose) then
+		showGhost(view, hint)
+	end
+end
+
+-- The piece `id` is turning: drawn turned by `rotation` (row-major 3x3, on top of its pose) about
+-- `point` (world units), exactly, and set back by `moved` (how far its pose lies from where it
+-- turns), until a call without an id lets it ease to its pose.
+function M.turning(view, id, rotation, point, moved)
+	if not id then
+		view.turn = nil
+		return
+	end
+	local x = vmath.vector3(rotation[1], rotation[4], rotation[7])
+	local y = vmath.vector3(rotation[2], rotation[5], rotation[8])
+	local z = vmath.vector3(rotation[3], rotation[6], rotation[9])
+	view.turn = { id = id, rotation = vmath.quat_basis(x, y, z), pivot = vmath.vector3(point[1], point[2], point[3]),
+		moved = vmath.vector3(moved[1], moved[2], moved[3]) }
+end
+
 -- A piece's goal and effects change only when its pose, lift or highlights do; any change
 -- wakes a resting piece.
 local function setGoal(p, pose, lifted, selected, invalid, hovered)
@@ -132,10 +155,6 @@ function M.present(view, display, selected, hovered)
 	for id, p in pairs(view.pieces) do
 		setGoal(p, display.poses[id], id == display.dragging,
 			id == selected and 1 or 0, id == display.invalid and 1 or 0, id == hovered and 1 or 0)
-	end
-	local hint, shown = display.hint, view.ghost.hint
-	if (hint and hint.piece) ~= (shown and shown.piece) or not state.samePose(hint and hint.pose, shown and shown.pose) then
-		showGhost(view, display.hint)
 	end
 	local focus = selected and { piece = selected, color = palette.pieceColor(view.level.pieces[selected], view.colors) }
 	walls_view.present(view.walls, display, focus)
@@ -197,13 +216,28 @@ end
 local UP = vmath.vector3(0, 1, 0)
 local NUDGE = vmath.vector3(1e-6, 0, 0)
 
-local function stepPiece(view, p, dt, eye, xray)
+-- A turning piece stands exactly where its turn puts it, lifted.
+local function standTurned(p, turn, goal)
+	local lift = vmath.vector3(0, LIFT, 0)
+	p.position = turn.pivot + vmath.rotate(turn.rotation, goal.position - turn.moved - turn.pivot) + lift
+	p.rotation = turn.rotation * goal.rotation
+	p.velocity = vmath.vector3()
+	p.rest = nil
+	go.set_position(p.position, p.go)
+	go.set_rotation(p.rotation, p.go)
+end
+
+local function stepPiece(view, p, dt, eye, xray, turn)
 	local goal = p.goal
 	if not goal then
 		if p.shown then
 			msg.post(p.mesh, "disable")
 			p.shown = false
 		end
+		return
+	end
+	if turn and p.shown then
+		standTurned(p, turn, goal)
 		return
 	end
 	if p.rest == goal then
@@ -254,8 +288,9 @@ function M.step(view, dt, eye, xray)
 			p.rest = nil
 		end
 	end
-	for _, p in pairs(view.pieces) do
-		stepPiece(view, p, dt, eye, xray)
+	local turn = view.turn
+	for id, p in pairs(view.pieces) do
+		stepPiece(view, p, dt, eye, xray, turn and turn.id == id and turn)
 	end
 	walls_view.step(view.walls, dt, eye)
 end
@@ -285,12 +320,15 @@ function M.finish(view, eye, xray)
 	walls_view.finish(view.walls, eye)
 end
 
--- The bounding sphere of the board, walls on either side included, for camera framing.
+-- For camera framing: the centre and radius of the board's bounding sphere, walls on either
+-- side included, and its footprint (view/orbit new).
 function M.bounds(level)
 	local s, gap = level.size, walls_view.WALL_GAP
 	local lo = vmath.vector3(-gap, -walls_view.FLOOR_GAP, -gap)
 	local hi = vmath.vector3(s[1] + gap, s[2], s[3] + gap)
-	return (lo + hi) * 0.5, vmath.length(hi - lo) * 0.5
+	local span = hi - lo
+	return (lo + hi) * 0.5, vmath.length(span) * 0.5,
+		{ radius = math.sqrt(span.x * span.x + span.z * span.z) * 0.5, half_height = span.y * 0.5 }
 end
 
 return hot(..., M)

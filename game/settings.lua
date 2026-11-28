@@ -13,6 +13,7 @@ M.defaults = {
 	left_handed = false,
 	open_all = false,
 	reduced_motion = false,
+	turn_ghost = true,
 	patterns = false,
 	high_contrast = false,
 	colors = "default",

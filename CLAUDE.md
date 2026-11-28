@@ -13,6 +13,10 @@ The title lives only in `game.project` (`[project] title`) and is read at runtim
 - Level preview: `luajit tools/preview.lua levels/<pack>/<level>.lua`
 - Level difficulty profile: `luajit tools/solve.lua [-s] levels/<pack>/*.lua` (exhaustive solver:
   solution count, candidates per piece, pieces that must turn, hidden cubes; `-s` one line each).
+- Drag reach: `luajit tools/reach.lua [-p WxH] [-a yaw] [-t pitch] levels/<pack>/*.lua` sweeps
+  pointer positions over a phone screen and reports, per piece, the area (44 dp finger targets)
+  whose drop lands on its solution pose (placed bottom up / last), drift and path dependence;
+  `PLAY=<file>` compares another play module. A pack takes minutes.
 - Level carving: `luajit tools/carve.lua -k 3-5 -t 600 -r <seed> sculpture.lua` cuts a drawn
   sculpture into random pieces and prints the best cuts (fewest solutions) as level files.
   `-g cyan,yellow -q 1 -m 2` makes all but one piece glass and keeps cuts with 2+ mixed wall cells.
@@ -213,6 +217,39 @@ Eleventh session (content): Transport (20, accent coral, two walls, after Window
 themed pack: subjects are rough sketches at Windows size (10-21 cubes, 2-6 pieces, 1-3 solutions),
 carved with `-f`. Inserting a pack before Towers locks later packs for existing saves until it is
 played (accepted at alpha). Awaits play-test (ordering, whether colours read as vehicles).
+
+Twelfth session (touch controls; the user found the result still clunky and asked to
+re-evaluate turning and placement in a fresh session, starting from how it feels in play).
+Built and liked or not yet judged: footprint framing (`orbit.fitDistance`: sphere up the view,
+upright cylinder across, independent of yaw and pitch; ~1.45x larger cubes on tall boards in
+portrait; the menu keeps the sphere fit); orbit follows the finger exactly and coasts after
+release (`orbit.release`, any press halts); fingers landing within 0.15 s make a pinch
+(`drag_cancel`, `play.cancel`); pinch zoom/twist locking (8% / 12 degrees, doubled once the
+other began). Soft stops at straight views were declined.
+Placement now (`game/play`; desktop "goes where I expect", phone sometimes not): candidates are
+the legal poses touching the floor, a wall behind the board or a piece (listed once per grab and
+turn); the face under the pointer names a target cell (a ray within a cell outside the board
+aims at the nearest edge cell) and the grabbed cube goes to the candidate nearest it (within
+1.5 cells; ray distance, then snugness, break ties); no hysteresis. A drag ends where the
+pointer rested 0.1 s before release if it slipped under two drag thresholds (`input/gestures`
+SETTLE/SLIP; untested on the phone). Tried and dropped: contact placement (pockets unreachable),
+ray-proximity scoring with hysteresis (steep views put pieces on the floor; path-dependent).
+Ideas not built: mark the target face while dragging (on touch the aim is 70 dp above the
+finger, unseen); place the grabbed cube from the tray too; catch the aim up to the finger after
+a turn (it keeps the offset the finger drifted); the grabbed cube farther than 1.5 cells from
+the target (long pieces held by an end); fade pieces near the pointer.
+Turning while dragging (clunky): the piece's middle holds still and it turns about one grid
+axis per touch, following the motion, settling on the nearest quarter on release; a second
+finger circling the first spins it about vertical (reversed after testing: a dial centred on
+the index carries the piece above it), moving up or down tips about the horizontal grid axis
+nearest the screen's right, 80 dp a quarter; mouse: right button held while dragging (across
+spins, near side follows the mouse; up/down tips), not yet confirmed to work. Settings > Game
+"Show turn result" ghosts the settled pose. Tried and dropped: the discrete second-finger swipe
+(axes inconsistent with the view: spin always world-vertical, tip axis flips at 45 degrees of
+yaw with iso at 35), free screen-space rotation snapped on release (tumbled: screen axes are off
+the grid; a thumb circling the index also moves the midpoint, so twists rolled).
+Lessons: judge by feel on the device; reach numbers (`tools/reach.lua`) missed both problems the
+user hit (steep views, path dependence); change one thing per phone test.
 
 Next, in order:
 0. In the game: credits line breaks look wrong (ask the user what they see); the hint ghost's

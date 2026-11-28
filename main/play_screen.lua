@@ -32,7 +32,10 @@ local PEEK_RATE = 14
 local CHAPTER_DELAY = 1.2
 
 local LIFT_DP = 70
-local SWIPE_DP = 50
+-- Tipping a dragged piece (input/interpret turnPiece): a quarter turn per TURN_DP of travel,
+-- beginning once it has moved TIP_LOCK_DP.
+local TURN_DP = 80
+local TIP_LOCK_DP = 8
 
 -- The button whose tooltip shows, or nil.
 local function shownTip(tip)
@@ -178,7 +181,8 @@ function M.gesture(screen, g, intents)
 	screen.interpreter.sensitivity = prefs.sensitivity
 	screen.interpreter.invert = prefs.invert
 	screen.interpreter.lift = LIFT_DP * screen.info.scale
-	screen.interpreter.swipe_step = SWIPE_DP * screen.info.scale
+	screen.interpreter.tip_lock = TIP_LOCK_DP * screen.info.scale
+	screen.interpreter.turn_step = TURN_DP * screen.info.scale
 	interpret.gesture(screen.interpreter, g, function(x, y)
 		return pickAt(screen, x, y)
 	end, intents)
@@ -197,6 +201,18 @@ local function cameraAxis(screen, about)
 	return play.dominantAxis(toTable(v))
 end
 
+-- Turns the dragged piece about a grid axis (input/interpret spin): vertical, or for "right"
+-- the horizontal axis nearest the camera's right. Returns whether its orientation changed.
+local function spinPiece(screen, intent)
+	local axis = { 0, 1, 0 }
+	if intent.about == "right" then
+		local a, sign = play.dominantAxis(toTable(vmath.rotate(screen.rotation, vmath.vector3(1, 0, 0))))
+		axis = { 0, 0, 0 }
+		axis[a] = sign
+	end
+	return play.spin(screen.session, axis, intent.angle)
+end
+
 -- Refused moves shake the piece they were aimed at; accepted ones play `cue`.
 local function respond(screen, done, cue)
 	if done then
@@ -213,6 +229,10 @@ local function applyCamera(screen, intent, dt)
 		orbit.orbitBy(screen.rig, intent.yaw, intent.pitch)
 	elseif kind == "orbit_rate" then
 		orbit.orbitAt(screen.rig, intent.yaw, intent.pitch, dt)
+	elseif kind == "coast" then
+		orbit.release(screen.rig)
+	elseif kind == "halt" then
+		orbit.halt(screen.rig)
 	elseif kind == "zoom" then
 		orbit.zoomBy(screen.rig, intent.factor)
 	elseif kind == "view" then
@@ -279,10 +299,14 @@ function M.apply(screen, intent, dt)
 		audio.cue("pick")
 		screen.hovered = nil
 		screen.pointer = { x = intent.x, y = intent.y }
-		play.grab(s, intent.piece, intent.cell)
+		local _, dir = cameras.ray("board", intent.x, intent.y, screen.info.w, screen.info.h)
+		play.grab(s, intent.piece, intent.cell, dir)
 	elseif kind == "drag" then
 		screen.pointer = { x = intent.x, y = intent.y }
 		play.dragTo(s, cameras.ray("board", intent.x, intent.y, screen.info.w, screen.info.h))
+	elseif kind == "drop" and intent.cancelled then
+		screen.pointer = nil
+		play.cancel(s)
 	elseif kind == "drop" then
 		screen.pointer = nil
 		local refused = play.display(s).invalid ~= nil
@@ -292,6 +316,12 @@ function M.apply(screen, intent, dt)
 		elseif placed then
 			audio.cue("place")
 		end
+	elseif kind == "spin" then
+		if spinPiece(screen, intent) then
+			audio.cue("turn")
+		end
+	elseif kind == "spin_end" then
+		play.settle(s)
 	elseif kind == "turn" then
 		local axis, sign = cameraAxis(screen, intent.about)
 		respond(screen, play.turn(s, axis, intent.dir * sign), "turn")
@@ -362,6 +392,11 @@ function M.present(screen, dt, info)
 	board_view.configure(screen.board, info.settings)
 	tray_view.configure(screen.tray, info.settings)
 	board_view.present(screen.board, display, s.selected, screen.hovered)
+	local turning, pivot, moved = play.spinning(s)
+	board_view.turning(screen.board, turning and display.dragging, turning, pivot, moved)
+	local snapped = turning and info.settings.turn_ghost and display.invalid == nil
+	board_view.ghost(screen.board, snapped and { piece = display.dragging, pose = display.poses[display.dragging] }
+		or display.hint)
 	board_view.step(screen.board, dt, screen.eye, math.max(orbit.xray(screen.rig), screen.peek_amount))
 	local ui = screen.ui
 	ui.selected, ui.hovered, ui.pointer, ui.held = s.selected, screen.hovered, screen.pointer, s.held

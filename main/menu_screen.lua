@@ -23,10 +23,11 @@ local ZOOM, SIDE_ZOOM = 0.78, 1.15
 -- pool: the board pool (view/board_pool); rules: the rule cards (catalog.loadRules).
 function M.enter(showcase, pool, rules)
 	local slot = board_pool.acquire(pool, showcase)
+	local center, radius = board_view.bounds(showcase)
 	local screen = {
 		module = M, level = showcase, sheets = { "main_menu" }, slot = slot,
 		board = slot.board,
-		rig = orbit.new(board_view.bounds(showcase)),
+		rig = orbit.new(center, radius),
 		interpreter = interpret.new(1),
 		display = { poses = showcase.solution, evaluation = core_rules.evaluate(showcase, { poses = showcase.solution }) },
 		rules = rules, card_scene = card_scene.new(pool), lens_inputs = {},
@@ -76,6 +77,10 @@ function M.apply(screen, intent)
 	local kind = intent.kind
 	if kind == "orbit" then
 		orbit.orbitBy(screen.rig, intent.yaw, 0)
+	elseif kind == "coast" then
+		orbit.release(screen.rig)
+	elseif kind == "halt" then
+		orbit.halt(screen.rig)
 	elseif kind == "menu" and #screen.sheets > 1 then
 		screen.rebinding = nil
 		sheets.close(screen)
